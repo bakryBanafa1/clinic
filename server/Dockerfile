@@ -9,7 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # تثبيت الحزم
-RUN npm ci
+RUN npm install
 
 # نسخ باقي الملفات
 COPY . .
