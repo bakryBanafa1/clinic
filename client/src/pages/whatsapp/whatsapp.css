@@ -1,0 +1,150 @@
+.whatsapp-page {
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.whatsapp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+@media (max-width: 768px) {
+  .whatsapp-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.paper-card {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.paper-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.card-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  color: var(--text-color);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.5rem;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.en-font {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  text-align: left;
+}
+
+.status-indicator {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 2rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-color);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--gray-400);
+  transition: background-color 0.3s;
+}
+
+.status-badge.open .status-dot { background-color: var(--success); box-shadow: 0 0 8px var(--success); }
+.status-badge.open { color: var(--success); background-color: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.2); }
+
+.status-badge.connecting .status-dot, .status-badge.qr_pending .status-dot { background-color: var(--warning-500); animation: pulse 1.5s infinite; }
+.status-badge.connecting { color: var(--warning-600); }
+
+.status-badge.close .status-dot { background-color: var(--danger); }
+.status-badge.close { color: var(--danger); background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
+
+.qr-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 250px;
+  background-color: var(--bg-color);
+  border-radius: var(--radius-md);
+  padding: 2rem;
+  border: 1px dashed var(--border-color);
+}
+
+.qr-display {
+  text-align: center;
+}
+
+.qr-image {
+  max-width: 280px;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  border: 4px solid white;
+  background: white;
+}
+
+.empty-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.connected-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1rem;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

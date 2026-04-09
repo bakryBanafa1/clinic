@@ -1,0 +1,36 @@
+/* Application-level overrides - everything else is in index.css and component CSS */
+
+/* Print styles override */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-container, .print-container * {
+    visibility: visible;
+  }
+  .print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
+
+/* Custom scrollbar for tables */
+.table-container::-webkit-scrollbar {
+  height: 4px;
+}
+.table-container::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 4px;
+}
+
+/* Form select arrow */
+select.form-select {
+  appearance: auto;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+  accent-color: var(--primary-500);
+}

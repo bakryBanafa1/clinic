@@ -1,0 +1,310 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../clinic.db"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  username  String   @unique
+  password  String
+  role      String   @default("receptionist") // admin, doctor, receptionist, nurse
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctor        Doctor?
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+model Doctor {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  specialty       String
+  phone           String?
+  licenseNumber   String?
+  consultationFee Float    @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user          User             @relation(fields: [userId], references: [id])
+  schedules     DoctorSchedule[]
+  appointments  Appointment[]
+  visits        Visit[]
+  prescriptions Prescription[]
+  followUps     FollowUp[]
+  queueEntries  QueueEntry[]
+}
+
+model Patient {
+  id               Int      @id @default(autoincrement())
+  fileNumber       String   @unique
+  name             String
+  dateOfBirth      String?
+  gender           String?  // male, female
+  phone            String?
+  email            String?
+  nationalId       String?
+  address          String?
+  bloodType        String?
+  allergies        String?
+  chronicDiseases  String?
+  emergencyContact String?
+  emergencyPhone   String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  appointments   Appointment[]
+  medicalHistory MedicalHistory[]
+  visits         Visit[]
+  files          PatientFile[]
+  invoices       Invoice[]
+  prescriptions  Prescription[]
+  followUps      FollowUp[]
+  queueEntries   QueueEntry[]
+  notifications  Notification[]
+}
+
+model Appointment {
+  id          Int      @id @default(autoincrement())
+  patientId   Int
+  doctorId    Int
+  date        String   // YYYY-MM-DD
+  startTime   String?  // HH:MM
+  endTime     String?  // HH:MM
+  period      String   @default("morning") // morning, evening
+  status      String   @default("pending") // pending, confirmed, cancelled, completed, no_show
+  notes       String?
+  queueNumber Int?
+  totalAmount Float    @default(0)
+  paidAmount  Float    @default(0)
+  paymentStatus String @default("unpaid") // unpaid, partial, paid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  doctor      Doctor       @relation(fields: [doctorId], references: [id])
+  visit       Visit?
+  queueEntry  QueueEntry?
+  invoice     Invoice?
+}
+
+model DoctorSchedule {
+  id              Int     @id @default(autoincrement())
+  doctorId        Int
+  dayOfWeek       Int     // 0=Sunday, 1=Monday, ..., 6=Saturday
+  morningStart    String? // HH:MM
+  morningEnd      String? // HH:MM
+  eveningStart    String? // HH:MM
+  eveningEnd      String? // HH:MM
+  morningCapacity Int     @default(20)
+  eveningCapacity Int     @default(20)
+  isActive        Boolean @default(true)
+
+  doctor Doctor @relation(fields: [doctorId], references: [id])
+}
+
+model Visit {
+  id              Int      @id @default(autoincrement())
+  patientId       Int
+  doctorId        Int
+  appointmentId   Int?     @unique
+  visitDate       DateTime @default(now())
+  chiefComplaint  String?  // الشكوى الرئيسية
+  diagnosis       String?  // التشخيص
+  examination     String?  // الفحص
+  treatmentPlan   String?  // خطة العلاج
+  notes           String?
+  vitalSigns      String?  // JSON: {bp, temp, pulse, weight, height}
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  doctor       Doctor        @relation(fields: [doctorId], references: [id])
+  appointment  Appointment?  @relation(fields: [appointmentId], references: [id])
+  prescription Prescription?
+  followUp     FollowUp?
+  invoice      Invoice?
+}
+
+model MedicalHistory {
+  id            Int      @id @default(autoincrement())
+  patientId     Int
+  condition     String
+  diagnosisDate String?
+  treatment     String?
+  status        String   @default("active") // active, resolved, chronic
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id])
+}
+
+model Prescription {
+  id           Int      @id @default(autoincrement())
+  visitId      Int      @unique
+  patientId    Int
+  doctorId     Int
+  date         DateTime @default(now())
+  medications  String   // JSON array [{name, dose, frequency, duration, instructions}]
+  instructions String?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  visit   Visit   @relation(fields: [visitId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+}
+
+model Invoice {
+  id            Int      @id @default(autoincrement())
+  invoiceNumber String   @unique
+  patientId     Int
+  visitId       Int?     @unique
+  appointmentId Int?     @unique
+  date          DateTime @default(now())
+  items         String   // JSON array [{description, quantity, unitPrice, total}]
+  subtotal      Float    @default(0)
+  discount      Float    @default(0)
+  tax           Float    @default(0)
+  total         Float    @default(0)
+  paidAmount    Float    @default(0)
+  paymentStatus String   @default("unpaid") // unpaid, partial, paid
+  paymentMethod String?  // cash, card, transfer
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  visit   Visit?  @relation(fields: [visitId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+}
+
+model PatientFile {
+  id          Int      @id @default(autoincrement())
+  patientId   Int
+  fileName    String
+  filePath    String
+  fileType    String?
+  fileSize    Int?
+  category    String   @default("other") // lab, xray, report, other
+  description String?
+  uploadedAt  DateTime @default(now())
+  uploadedBy  Int?
+
+  patient Patient @relation(fields: [patientId], references: [id])
+}
+
+model FollowUp {
+  id               Int      @id @default(autoincrement())
+  patientId        Int
+  doctorId         Int
+  visitId          Int      @unique
+  scheduledDate    String   // YYYY-MM-DD تاريخ العودة
+  daysAfterVisit   Int      // عدد الأيام بعد الزيارة
+  reason           String?  // سبب العودة
+  notes            String?
+  status           String   @default("pending") // pending, reminded, completed, missed, cancelled
+  whatsappSent     Boolean  @default(false)
+  whatsappSentAt   DateTime?
+  notificationSent Boolean  @default(false)
+  reminderDate     String?  // تاريخ التذكير
+  createdAt        DateTime @default(now())
+  completedAt      DateTime?
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  visit   Visit   @relation(fields: [visitId], references: [id])
+}
+
+model QueueEntry {
+  id            Int       @id @default(autoincrement())
+  appointmentId Int       @unique
+  patientId     Int
+  doctorId      Int
+  date          String    // YYYY-MM-DD
+  queueNumber   Int
+  status        String    @default("waiting") // waiting, in_progress, completed, skipped
+  checkedInAt   DateTime  @default(now())
+  calledAt      DateTime?
+  completedAt   DateTime?
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  patient     Patient     @relation(fields: [patientId], references: [id])
+  doctor      Doctor      @relation(fields: [doctorId], references: [id])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  patientId Int?
+  title     String
+  message   String
+  type      String   @default("system") // appointment, followup, reminder, system
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id])
+  patient Patient? @relation(fields: [patientId], references: [id])
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  action    String
+  entity    String
+  entityId  Int?
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model ClinicSettings {
+  id                     Int     @id @default(autoincrement())
+  clinicName             String  @default("عيادتي")
+  clinicNameEn           String? @default("My Clinic")
+  logo                   String? // مسار الشعار
+  address                String?
+  city                   String?
+  country                String?
+  phone                  String?
+  mobile                 String?
+  email                  String?
+  website                String?
+  taxNumber              String?
+  commercialRegister     String?
+  workingHours           String? // JSON
+  defaultMorningCapacity Int     @default(20)
+  defaultEveningCapacity Int     @default(20)
+  appointmentDuration    Int     @default(15) // بالدقائق
+  currency               String  @default("ر.س")
+  taxRate                Float   @default(15)
+  invoiceNotes           String?
+  prescriptionNotes      String?
+  headerColor            String  @default("#0369a1")
+  whatsappEnabled        Boolean @default(false)
+  whatsappNumber         String?
+  minPaymentAmount      Float   @default(0)
+  evolutionApiUrl        String?
+  evolutionApiKey        String?
+  evolutionInstanceName  String?
+}
+
+model WhatsAppSession {
+  id             Int      @id @default(autoincrement())
+  sessionData    String?
+  status         String   @default("disconnected") // connected, disconnected, qr_pending
+  connectedAt    DateTime?
+  lastActivityAt DateTime?
+}
