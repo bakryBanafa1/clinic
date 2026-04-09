@@ -1,0 +1,7 @@
+node_modules
+npm-debug.log
+clinic.db
+clinic.db-journal
+uploads/
+.env
+.DS_Store
