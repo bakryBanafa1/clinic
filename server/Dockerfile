@@ -1,7 +1,7 @@
-FROM node:18-alpine
+FROM node:18
 
-# تثبيت الحزم اللازمة لـ SQLite عبر Alpine
-RUN apk add --no-cache openssl
+# تثبيت متطلبات أساسية لبناء الحزم المعقدة
+RUN apt-get update && apt-get install -y openssl python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
