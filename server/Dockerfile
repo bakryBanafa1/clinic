@@ -14,6 +14,9 @@ RUN npm install
 # نسخ باقي الملفات
 COPY . .
 
+# إعداد متغير البيئة الخاص بقاعدة البيانات
+ENV DATABASE_URL="file:/data/clinic.db"
+
 # توليد Prisma Client
 # نستخدم --skip-generate في ال db push لاحقاً لأننا ولدناه هنا
 RUN npx prisma generate
@@ -22,4 +25,4 @@ RUN npx prisma generate
 EXPOSE 5000
 
 # الأمر لبدء التشغيل مع دفع مخطط قاعدة البيانات
-CMD ["sh", "-c", "mkdir -p /data && touch /data/clinic.db && ln -sf /data/clinic.db /app/clinic.db && npx prisma db push --skip-generate --accept-data-loss && npm start"]
+CMD ["sh", "-c", "mkdir -p /data && npx prisma db push --skip-generate --accept-data-loss && npm start"]
