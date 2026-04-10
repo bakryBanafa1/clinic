@@ -1,5 +1,5 @@
 # المرحلة الأولى: بناء المشروع (Build Stage)
-FROM node:18-alpine AS build
+FROM node:20 AS build
 
 WORKDIR /app
 COPY package*.json ./
@@ -8,8 +8,8 @@ ENV NODE_ENV=development
 RUN npm install
 
 COPY . .
-# تعطيل حدود الذاكرة التي قد تعيق النظام وعرض الخطأ بالتفصيل في حالة الفشل
-RUN npm run build -- --debug || (echo "Build failed!" && exit 1)
+# تعطيل حدود الذاكرة وعرض ملف الأخطاء بالكامل في حال الفشل
+RUN npm run build > build_logs.txt 2>&1 || (cat build_logs.txt && exit 1)
 
 # المرحلة الثانية: التشغيل (Production Stage)
 FROM nginx:alpine
