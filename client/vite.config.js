@@ -15,5 +15,9 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
+  },
+  build: {
+    minify: false,
+    chunkSizeWarningLimit: 2000
   }
 })
