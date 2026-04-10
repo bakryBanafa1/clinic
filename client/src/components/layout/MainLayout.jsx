@@ -68,6 +68,7 @@ const MainLayout = () => {
     { name: 'الدور', path: '/queue', icon: <MonitorPlay size={20} /> },
     { name: 'الزيارات', path: '/visits', icon: <Activity size={20} /> },
     { name: 'المراجعات', path: '/followup', icon: <MessageCircle size={20} /> },
+    { name: 'طلبات الواتساب', path: '/whatsapp-requests', icon: <MessageCircle size={20} /> },
     { name: 'الفواتير', path: '/billing', icon: <Receipt size={20} /> },
     { name: 'التقارير', path: '/reports', icon: <PieChart size={20} /> },
     { name: 'الأطباء', path: '/doctors', icon: <UserRound size={20} /> },

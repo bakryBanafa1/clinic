@@ -96,7 +96,7 @@ const PatientsList = () => {
                 <th>اسم المريض</th>
                 <th>رقم الجوال</th>
                 <th>الجنس</th>
-                <th>تاريخ الميلاد</th>
+                <th>العمر</th>
                 <th>الزيارات</th>
                 <th>الإجراءات</th>
               </tr>
@@ -111,10 +111,10 @@ const PatientsList = () => {
                   <tr key={patient.id} onClick={() => navigate(`/patients/${patient.id}`)} className="cursor-pointer">
                     <td className="font-medium text-primary"><span className="en-font">{patient.fileNumber}</span></td>
                     <td className="font-bold">{patient.name}</td>
-                    <td className="en-font">{patient.phone || '-'}</td>
+                    <td><span className="en-font">{patient.phone || '-'}</span></td>
                     <td>{getGenderTextLocal(patient.gender)}</td>
-                    <td className="en-font">{patient.dateOfBirth || '-'}</td>
-                    <td className="en-font">{patient._count?.visits || 0}</td>
+                    <td><span className="en-font">{patient.dateOfBirth && patient.dateOfBirth.includes('-') ? new Date().getFullYear() - new Date(patient.dateOfBirth).getFullYear() + ' سنة' : (patient.dateOfBirth || '-')}</span></td>
+                    <td><span className="en-font">{patient._count?.visits || 0}</span></td>
                     <td>
                       <div className="flex items-center gap-2">
                         <button className="action-btn text-primary" title="عرض الملف" onClick={(e) => { e.stopPropagation(); navigate(`/patients/${patient.id}`); }}>

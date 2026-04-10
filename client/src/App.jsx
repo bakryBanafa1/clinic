@@ -15,6 +15,7 @@ import VisitsPage from './pages/visits';
 import FollowUpPage from './pages/followup';
 import ReportsPage from './pages/reports';
 import WhatsAppConnection from './pages/whatsapp';
+import WhatsAppRequestsPage from './pages/whatsappRequests';
 
 const PrivateRoute = ({ children }) => {
   const { user } = useContext(AuthContext);
@@ -41,6 +42,7 @@ function App() {
           <Route path="billing" element={<BillingPage />} />
           <Route path="visits" element={<VisitsPage />} />
           <Route path="followup" element={<FollowUpPage />} />
+          <Route path="whatsapp-requests" element={<WhatsAppRequestsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="whatsapp" element={<WhatsAppConnection />} />
           {/* We will add more routes here soon */}

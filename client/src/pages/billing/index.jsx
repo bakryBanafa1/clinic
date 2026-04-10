@@ -53,12 +53,10 @@ const BillingPage = () => {
 
   const openPrintModal = async (invoice) => {
     try {
-      // Fetch full invoice details
       const fullInvoice = await api.get(`/billing/${invoice.id}`);
       setSelectedInvoice(fullInvoice);
       setIsPrintModalOpen(true);
     } catch (err) {
-      // Fallback to basic invoice
       setSelectedInvoice(invoice);
       setIsPrintModalOpen(true);
     }
@@ -106,48 +104,45 @@ const BillingPage = () => {
           </div>
         </div>
 
-        <div className="table-container">
-          <table className="data-table">
+        <div style={{ overflowX: 'auto', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <table cellSpacing={0} cellPadding={0} style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', fontFamily: 'Segoe UI, Tahoma, sans-serif' }}>
             <thead>
-              <tr>
-                <th>رقم الفاتورة</th>
-                <th>التاريخ</th>
-                <th>المريض</th>
-                <th>المبلغ الفرعي</th>
-                <th>الخصم</th>
-                <th>الإجمالي</th>
-                <th>المدفوع</th>
-                <th>الحالة</th>
-                <th>الإجراءات</th>
+              <tr style={{ background: 'linear-gradient(to bottom, #3b82f6, #2563eb)', height: '45px' }}>
+                <th style={{ padding: '12px', textAlign: 'right', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600' }}>رقم الفاتورة</th>
+                <th style={{ padding: '12px', textAlign: 'center', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600', width: '90px' }}>التاريخ</th>
+                
+                <th style={{ padding: '12px', textAlign: 'right', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600', width: '100px' }}>المبلغ الفرعي</th>
+                <th style={{ padding: '12px', textAlign: 'right', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600', width: '70px' }}>الخصم</th>
+                <th style={{ padding: '12px', textAlign: 'right', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600', width: '100px' }}>الإجمالي</th>
+                <th style={{ padding: '12px', textAlign: 'right', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600', width: '100px' }}>المدفوع</th>
+                <th style={{ padding: '12px', textAlign: 'center', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600', width: '90px' }}>الحالة</th>
+                <th style={{ padding: '12px', textAlign: 'center', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600', width: '100px' }}>الإجراءات</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="9" className="text-center p-8 text-muted">جاري التحميل...</td></tr>
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px', fontSize: '16px', color: '#6b7280' }}>جاري التحميل...</td></tr>
               ) : filteredInvoices.length === 0 ? (
-                <tr><td colSpan="9" className="text-center p-8 text-muted">لا يوجد فواتير</td></tr>
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px', fontSize: '16px', color: '#6b7280' }}>📋 لا يوجد فواتير</td></tr>
               ) : (
-                filteredInvoices.map(inv => (
-                  <tr key={inv.id}>
-                    <td className="font-bold en-font text-primary-600">{inv.invoiceNumber}</td>
-                    <td className="en-font">{formatDate(inv.date)}</td>
-                    <td className="font-bold">{inv.patient?.name}</td>
-                    <td className="en-font">{inv.subtotal} {currency}</td>
-                    <td className="en-font">{inv.discount > 0 ? `-${inv.discount}` : '0'} {currency}</td>
-                    <td className="en-font font-bold text-primary-600">{inv.total} {currency}</td>
-                    <td className="en-font">{inv.paidAmount} {currency}</td>
-                    <td>
-                      <span className="px-3 py-1 text-xs font-bold rounded-full text-white" style={{ backgroundColor: getStatusColor(inv.paymentStatus) }}>
+                filteredInvoices.map((inv, idx) => (
+                  <tr key={inv.id} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f8fafc', height: '40px', transition: 'background-color 0.2s' }}>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #e2e8f0' }}><b style={{ color: '#2563eb', fontSize: '14px' }}>{inv.invoiceNumber}</b></td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>{formatDate(inv.date)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #e2e8f0', fontFamily: 'monospace' }}>{Number(inv.subtotal).toFixed(2)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #e2e8f0', color: inv.discount > 0 ? '#dc2626' : '#94a3b8' }}>{inv.discount || '-'}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', color: '#2563eb', fontFamily: 'monospace', fontSize: '14px' }}>{Number(inv.total).toFixed(2)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #e2e8f0', fontFamily: 'monospace', color: '#059669' }}>{Number(inv.paidAmount).toFixed(2)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}>
+                      <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', color: 'white', backgroundColor: getStatusColor(inv.paymentStatus), boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
                         {getStatusText(inv.paymentStatus)}
                       </span>
                     </td>
-                    <td>
-                      <div className="flex gap-2">
-                         {inv.paymentStatus !== 'paid' && (
-                           <button onClick={() => handlePay(inv.id, inv)} className="btn-primary py-1 px-3 text-sm">دفع كامل</button>
-                         )}
-                         <button onClick={() => openPrintModal(inv)} className="action-btn text-muted" title="طباعة"><Printer size={18}/></button>
-                      </div>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}>
+                      {inv.paymentStatus !== 'paid' && (
+                        <button onClick={() => handlePay(inv.id, inv)} style={{ padding: '5px 12px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600', fontSize: '12px', boxShadow: '0 2px 4px rgba(16,185,129,0.3)', marginRight: '4px' }}>دفع</button>
+                      )}
+                      <button onClick={() => openPrintModal(inv)} style={{ padding: '5px 8px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '4px', cursor: 'pointer', fontSize: '14px' }}>🖨️</button>
                     </td>
                   </tr>
                 ))

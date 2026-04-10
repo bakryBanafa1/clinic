@@ -308,3 +308,12 @@ model WhatsAppSession {
   connectedAt    DateTime?
   lastActivityAt DateTime?
 }
+
+model WhatsAppRequest {
+  id          Int      @id @default(autoincrement())
+  phone       String
+  message     String
+  status      String   @default("pending") // pending, sent, failed
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+}

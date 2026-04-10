@@ -190,7 +190,7 @@ const PatientProfile = () => {
               </h3>
               <div className="flex flex-col gap-3 text-sm">
                 {[
-                  { label: 'تاريخ الميلاد', value: patient.dateOfBirth || '-', isEn: true },
+                  { label: 'العمر', value: patient.dateOfBirth && patient.dateOfBirth.includes('-') ? new Date().getFullYear() - new Date(patient.dateOfBirth).getFullYear() + ' سنة' : (patient.dateOfBirth || '-'), isEn: false },
                   { label: 'الهوية', value: patient.nationalId || '-', isEn: true },
                   { label: 'رقم الجوال', value: patient.phone || '-', isEn: true },
                   { label: 'فصيلة الدم', value: getBloodTypeDisplay(patient.bloodType), isEn: true, danger: true },
@@ -293,7 +293,7 @@ const PatientProfile = () => {
                          <tbody>
                            {patient.visits.map(visit => (
                              <tr key={visit.id}>
-                               <td className="en-font">{formatDate(visit.visitDate)}</td>
+                               <td><span className="en-font">{formatDate(visit.visitDate)}</span></td>
                                <td>{visit.doctor?.user?.name || '-'}</td>
                                <td>{visit.chiefComplaint || '-'}</td>
                                <td>{visit.diagnosis || '-'}</td>

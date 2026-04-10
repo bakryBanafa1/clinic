@@ -33,6 +33,8 @@ app.use('/api/files', require('./routes/files'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/api/evolution', require('./routes/evolution'));
+app.use('/api/whatsapp-requests', require('./routes/whatsappRequests'));
+app.use('/api/external-orders', require('./routes/externalOrders'));
 
 // Health check
 app.get('/api/health', (req, res) => {

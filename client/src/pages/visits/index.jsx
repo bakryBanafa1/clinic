@@ -132,7 +132,7 @@ const VisitsPage = () => {
               ) : (
                 filteredVisits.map(v => (
                   <tr key={v.id}>
-                    <td className="en-font font-medium">{formatDate(v.visitDate)}</td>
+                    <td><span className="en-font font-medium">{formatDate(v.visitDate)}</span></td>
                     <td className="font-bold">{v.patient?.name}</td>
                     <td>{v.doctor?.user?.name}</td>
                     <td>{v.chiefComplaint || '-'}</td>

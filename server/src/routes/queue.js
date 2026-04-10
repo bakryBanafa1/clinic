@@ -92,12 +92,47 @@ router.put('/:id/call', authMiddleware, async (req, res) => {
 // إكمال مريض
 router.put('/:id/complete', authMiddleware, async (req, res) => {
   try {
+    const existingEntry = await prisma.queueEntry.findUnique({
+      where: { id: parseInt(req.params.id) }
+    });
+
+    if (!existingEntry) {
+      return res.status(404).json({ error: 'غير موجود' });
+    }
+
+    let visit = await prisma.visit.findUnique({
+      where: { appointmentId: existingEntry.appointmentId }
+    });
+
+    if (!visit) {
+      visit = await prisma.visit.create({
+        data: {
+          patientId: existingEntry.patientId,
+          doctorId: existingEntry.doctorId,
+          appointmentId: existingEntry.appointmentId,
+          visitDate: new Date(),
+          chiefComplaint: 'مراجعة عامة',
+          diagnosis: '',
+          examination: '',
+          treatmentPlan: '',
+          notes: 'تم إنهاء الزيارة عبر إدارة الدور بدون إدخال تفاصيل إضافية.'
+        }
+      });
+    }
+
     const entry = await prisma.queueEntry.update({
       where: { id: parseInt(req.params.id) },
       data: { status: 'completed', completedAt: new Date() }
     });
+
+    await prisma.appointment.update({
+      where: { id: existingEntry.appointmentId },
+      data: { status: 'completed' }
+    });
+
     res.json(entry);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'خطأ في الخادم' });
   }
 });

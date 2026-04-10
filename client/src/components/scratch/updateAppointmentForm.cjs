@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from 'react';
+const fs = require('fs');
+const path = require('path');
+
+const fileContent = `import React, { useState, useEffect } from 'react';
 import api from '../../utils/api';
 
 const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defaultPhone, orderMessage }) => {
@@ -38,7 +41,7 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
     const searchPatients = async () => {
       if (patientSearch.length >= 2) {
          try {
-           const res = await api.get(`/patients?search=${patientSearch}&limit=10`);
+           const res = await api.get(\`/patients?search=\${patientSearch}&limit=10\`);
            setPatientResults(res.patients || []);
            setShowPatientResults(true);
          } catch (err) {
@@ -99,7 +102,7 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
 
   const checkCapacity = async () => {
     try {
-      const res = await api.get(`/appointments/availability?doctorId=${formData.doctorId}&date=${formData.date}`);
+      const res = await api.get(\`/appointments/availability?doctorId=\${formData.doctorId}&date=\${formData.date}\`);
       if (!res.available) {
         setCapacityInfo({ available: 0, capacity: 0, message: res.message });
         return;
@@ -298,7 +301,7 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
       </div>
 
       {capacityInfo && (
-         <div className={`p-3 rounded-md text-sm border ${capacityInfo.available > 0 ? 'bg-blue-50 border border-primary-200 text-blue-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+         <div className={\`p-3 rounded-md text-sm border \${capacityInfo.available > 0 ? 'bg-blue-50 border border-primary-200 text-blue-700' : 'bg-red-50 border border-red-200 text-red-700'}\`}>
             <span className="font-bold block mb-1">حالة الاستيعاب للفترة المحددة:</span>
             {capacityInfo.message ? (
                <span>{capacityInfo.message}</span>
@@ -332,7 +335,7 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
               </div>
               <div className="form-group mb-0">
                 <label>المتبقي للدفع</label>
-                <div className={`font-bold text-lg en-font ${remaining > 0 ? 'text-danger' : 'text-success'}`}>{remaining} {settings?.currency || 'ر.س'}</div>
+                <div className={\`font-bold text-lg en-font \${remaining > 0 ? 'text-danger' : 'text-success'}\`}>{remaining} {settings?.currency || 'ر.س'}</div>
               </div>
             </div>
             {minPayment > 0 && <p className="text-sm mt-3 text-warning-700">★ الحد الأدنى للتسديد لتأكيد الحجز هو: {minPayment} {settings?.currency || 'ر.س'}</p>}
@@ -356,3 +359,6 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
 };
 
 export default AppointmentForm;
+`;
+
+fs.writeFileSync('d:/My Projects/clinic/client/src/components/appointments/AppointmentForm.jsx', fileContent);

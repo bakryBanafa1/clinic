@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Filter, CheckCircle, XCircle, UserCheck, Trash2, Pencil } from 'lucide-react';
+import { Calendar, Plus, Filter, CheckCircle, XCircle, UserCheck, Trash2, Pencil, Download } from 'lucide-react';
 import api from '../../utils/api';
 import { getStatusText, getStatusColor, formatDate } from '../../utils/helpers';
 import Modal from '../../components/ui/Modal';
@@ -14,6 +14,9 @@ const AppointmentsList = () => {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedApptToPay, setSelectedApptToPay] = useState(null);
   const [amountToPay, setAmountToPay] = useState('');
+  const [externalOrders, setExternalOrders] = useState([]);
+  const [externalModalOpen, setExternalModalOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   useEffect(() => {
     fetchAppointments();
@@ -98,6 +101,34 @@ const AppointmentsList = () => {
     setIsModalOpen(true);
   };
 
+  const fetchExternalOrders = async () => {
+    try {
+      const data = await api.get('/external-orders');
+      setExternalOrders(data.filter(o => o.status === 'pending'));
+      setExternalModalOpen(true);
+    } catch (err) {
+      alert('فشل في جلب الطلبات');
+    }
+  };
+
+  const handleCreateFromOrder = (order) => {
+    const phone = order.phone.replace('@c.us', '').replace('966', '0').replace('967', '');
+    setSelectedOrder({ ...order, phone, message: order.message });
+    setExternalModalOpen(false);
+    setEditingAppointment(null);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteOrder = async (id) => {
+    if (!confirm('هل تريد حذف هذا الطلب؟')) return;
+    try {
+      await api.delete(`/external-orders/${id}`);
+      setExternalOrders(prev => prev.filter(o => o.id !== id));
+    } catch (err) {
+      alert('فشل في حذف الطلب');
+    }
+  };
+
   return (
     <div className="animate-fade-in pb-8">
       <div className="flex-between mb-6">
@@ -105,10 +136,16 @@ const AppointmentsList = () => {
           <h1 className="text-2xl font-bold mb-1">إدارة المواعيد</h1>
           <p className="text-muted">جدول المواعيد والحجوزات اليومية</p>
         </div>
-        <button className="btn-primary" onClick={handleOpenAdd}>
-          <Plus size={18} />
-          <span>حجز موعد جديد</span>
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={fetchExternalOrders}>
+            <Download size={18} />
+            <span>استيراد من الطلبات</span>
+          </button>
+          <button className="btn-primary" onClick={handleOpenAdd}>
+            <Plus size={18} />
+            <span>حجز موعد جديد</span>
+          </button>
+        </div>
       </div>
 
       <div className="bg-surface rounded-xl border border-color shadow-sm mb-6">
@@ -195,8 +232,8 @@ const AppointmentsList = () => {
         </div>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingAppointment(null); }} title="حجز موعد جديد" size="lg">
-        <AppointmentForm onClose={() => { setIsModalOpen(false); setEditingAppointment(null); }} onSave={handleSave} />
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingAppointment(null); setSelectedOrder(null); }} title="حجز موعد جديد" size="lg">
+        <AppointmentForm onClose={() => { setIsModalOpen(false); setEditingAppointment(null); setSelectedOrder(null); }} onSave={handleSave} defaultPhone={selectedOrder?.phone} orderMessage={selectedOrder?.message} />
       </Modal>
 
       <Modal isOpen={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="إكمال دفع الموعد" size="sm">
@@ -216,6 +253,44 @@ const AppointmentsList = () => {
               <button type="submit" className="btn-primary">حفظ وتسديد</button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      <Modal isOpen={externalModalOpen} onClose={() => setExternalModalOpen(false)} title="الطلبات الخارجية المعلقة" size="lg">
+        {externalOrders.length === 0 ? (
+          <p className="text-center p-8 text-muted">لا توجد طلبات معلقة</p>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>رقم الهاتف</th>
+                  <th>التفاصيل</th>
+                  <th>تاريخ الطلب</th>
+                  <th>الإجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {externalOrders.map(order => (
+                  <tr key={order.id}>
+                    <td className="en-font font-bold">{order.phone?.replace('@c.us', '').replace('966', '0').replace('967', '')}</td>
+                    <td className="max-w-xs text-truncate">{order.message}</td>
+                    <td className="en-font text-sm">{formatDate(order.createdAt)}</td>
+                    <td>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleCreateFromOrder(order)} className="btn-primary text-sm">
+                          حجز موعد
+                        </button>
+                        <button onClick={() => handleDeleteOrder(order.id)} className="btn-secondary text-sm text-danger">
+                          حذف
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Modal>
     </div>
