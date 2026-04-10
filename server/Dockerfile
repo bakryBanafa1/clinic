@@ -1,4 +1,4 @@
-FROM node:18
+FROM node:20
 
 # تثبيت متطلبات أساسية لبناء الحزم المعقدة
 RUN apt-get update && apt-get install -y openssl python3 make g++ && rm -rf /var/lib/apt/lists/*
@@ -8,8 +8,8 @@ WORKDIR /app
 # نسخ ملفات تعريف المشروع
 COPY package*.json ./
 
-# تثبيت الحزم
-RUN npm install
+# تثبيت الحزم وعرض تقرير الأخطاء كاملًا في حالة الفشل
+RUN npm install > install_logs.txt 2>&1 || (cat install_logs.txt && exit 1)
 
 # نسخ باقي الملفات
 COPY . .
