@@ -5,7 +5,12 @@ const router = express.Router();
 
 // Helper function to format Evolution URL
 const formatEvolutionUrl = (url) => {
-  return url ? url.replace(/\/$/, '') : '';
+  if (!url) return '';
+  let formatted = url.trim().replace(/\/$/, '');
+  if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
+    formatted = 'https://' + formatted;
+  }
+  return formatted;
 };
 
 // GET: Fetch Evolution Configuration
@@ -65,7 +70,10 @@ router.get('/instance/status', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'إعدادات EvolutionAPI غير مكتملة' });
     }
 
-    const evolutionUrl = settings.evolutionApiUrl;
+    let evolutionUrl = settings.evolutionApiUrl;
+    if (!evolutionUrl.startsWith('http')) {
+      evolutionUrl = 'https://' + evolutionUrl;
+    }
     const globalApiKey = settings.evolutionApiKey;
     const instanceName = settings.evolutionInstanceName;
 
@@ -106,7 +114,10 @@ router.post('/instance/create', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'إعدادات EvolutionAPI غير مكتملة' });
     }
 
-    const evolutionUrl = settings.evolutionApiUrl;
+    let evolutionUrl = settings.evolutionApiUrl;
+    if (!evolutionUrl.startsWith('http')) {
+      evolutionUrl = 'https://' + evolutionUrl;
+    }
     const globalApiKey = settings.evolutionApiKey;
     const instanceName = settings.evolutionInstanceName;
 
@@ -140,7 +151,9 @@ router.post('/instance/create', authMiddleware, async (req, res) => {
     // If instance already exists, we could try to fetch just the QR code
     try {
         const settings = await prisma.clinicSettings.findFirst();
-        const response2 = await fetch(`${settings.evolutionApiUrl}/instance/connect/${settings.evolutionInstanceName}`, {
+        let fallbackUrl = settings.evolutionApiUrl;
+        if (!fallbackUrl.startsWith('http')) fallbackUrl = 'https://' + fallbackUrl;
+        const response2 = await fetch(`${fallbackUrl}/instance/connect/${settings.evolutionInstanceName}`, {
             method: 'GET',
             headers: {
                 'apikey': settings.evolutionApiKey
@@ -165,7 +178,10 @@ router.delete('/instance/logout', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'إعدادات EvolutionAPI غير مكتملة' });
     }
 
-    const evolutionUrl = settings.evolutionApiUrl;
+    let evolutionUrl = settings.evolutionApiUrl;
+    if (!evolutionUrl.startsWith('http')) {
+      evolutionUrl = 'https://' + evolutionUrl;
+    }
     const globalApiKey = settings.evolutionApiKey;
     const instanceName = settings.evolutionInstanceName;
 
