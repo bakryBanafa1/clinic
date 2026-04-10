@@ -24,5 +24,5 @@ RUN npx prisma generate
 # تحديد المنفذ
 EXPOSE 5000
 
-# الأمر لبدء التشغيل مع دفع مخطط قاعدة البيانات
-CMD ["sh", "-c", "mkdir -p /data && npx prisma db push --skip-generate --accept-data-loss && npm start"]
+# الأمر لبدء التشغيل مع دفع مخطط قاعدة البيانات وبذر البيانات الافتراضية
+CMD ["sh", "-c", "mkdir -p /data && npx prisma db push --skip-generate --accept-data-loss && npm run db:seed && npm start"]
