@@ -3,10 +3,12 @@ FROM node:18-alpine AS build
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+# تثبيت كل الحزم (بما فيها التطويرية) بغض النظر عن بيئة Coolify
+RUN npm install --include=dev
 
 COPY . .
-RUN npm run build
+# استخدام مساحة ذاكرة أعلى لتجنب مشاكل الخوادم الصغيرة 
+RUN NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
 # المرحلة الثانية: التشغيل (Production Stage)
 FROM nginx:alpine
