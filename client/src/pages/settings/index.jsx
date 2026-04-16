@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, UploadCloud, Store, Palette, Globe } from 'lucide-react';
+import { Save, UploadCloud, Store, Palette, Globe, ListOrdered } from 'lucide-react';
 import api from '../../utils/api';
 
 const ClinicSettings = () => {
@@ -11,7 +11,9 @@ const ClinicSettings = () => {
     taxRate: 15,
     currency: 'SAR',
     whatsappNumber: '',
-    whatsappEnabled: false
+    whatsappEnabled: false,
+    queueExaminationRatio: 1,
+    queueFollowupRatio: 1
   });
   
   const [loading, setLoading] = useState(true);
@@ -94,6 +96,32 @@ const ClinicSettings = () => {
                      <label>العنوان</label>
                      <input type="text" name="address" value={settings.address || ''} onChange={handleChange} />
                   </div>
+               </div>
+            </div>
+
+            <div className="bg-surface rounded-xl border border-color shadow-sm p-6">
+               <h3 className="font-bold flex items-center gap-2 mb-6 border-b border-color pb-3">
+                  <ListOrdered size={20} className="text-primary-600"/> إعدادات ترتيب الدور (المعاينات والمراجعات)
+               </h3>
+               <p className="text-sm text-muted mb-4">تحكّم في طريقة ترتيب المرضى في طابور الانتظار بالتبادل بين المعاينات والمراجعات.</p>
+               <div className="grid-cols-1 sm:grid-cols-2 gap-4" style={{ display: 'grid' }}>
+                  <div className="form-group">
+                     <label>عدد المعاينات 🩺 في كل دورة</label>
+                     <input type="number" name="queueExaminationRatio" value={settings.queueExaminationRatio || 1} onChange={handleChange} min="1" max="10" />
+                     <p className="text-xs text-muted mt-1">كم معاينة تمر قبل إدخال مراجعة</p>
+                  </div>
+                  <div className="form-group">
+                     <label>عدد المراجعات 🔄 في كل دورة</label>
+                     <input type="number" name="queueFollowupRatio" value={settings.queueFollowupRatio || 1} onChange={handleChange} min="1" max="10" />
+                     <p className="text-xs text-muted mt-1">كم مراجعة تمر بعد المعاينات</p>
+                  </div>
+               </div>
+               <div className="mt-3 p-3 bg-blue-50 text-blue-700 rounded-md text-sm border border-blue-200">
+                  💡 <b>مثال:</b> إذا كانت المعاينات = {settings.queueExaminationRatio || 1} والمراجعات = {settings.queueFollowupRatio || 1}، 
+                  فسيكون الترتيب: {Array.from({length: 2}, () => [
+                    ...Array.from({length: settings.queueExaminationRatio || 1}, () => '🩺'),
+                    ...Array.from({length: settings.queueFollowupRatio || 1}, () => '🔄')
+                  ]).flat().join(' → ')} → ...
                </div>
             </div>
 

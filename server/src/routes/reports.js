@@ -19,7 +19,7 @@ router.get('/dashboard', authMiddleware, async (req, res) => {
       prisma.patient.count(),
       prisma.appointment.count({ where: { date: today, status: { not: 'cancelled' } } }),
       prisma.appointment.count({ where: { date: today, status: 'completed' } }),
-      prisma.invoice.aggregate({ where: { date: { gte: startOfMonth, lte: endOfMonth }, paymentStatus: { not: 'cancelled' } }, _sum: { paidAmount: true } }),
+      prisma.invoice.aggregate({ where: { date: { gte: startOfMonth, lte: endOfMonth }, paymentStatus: { notIn: ['cancelled', 'refunded'] } }, _sum: { paidAmount: true } }),
       prisma.invoice.count({ where: { paymentStatus: { in: ['unpaid', 'partial'] } } }),
       prisma.followUp.count({ where: { scheduledDate: today, status: { in: ['pending', 'reminded'] } } }),
       prisma.followUp.count({ where: { scheduledDate: { lt: today }, status: { in: ['pending', 'reminded'] } } }),
@@ -56,12 +56,13 @@ router.get('/financial', authMiddleware, async (req, res) => {
 
     const invoices = await prisma.invoice.findMany({
       where,
-      select: { date: true, total: true, paidAmount: true, paymentStatus: true, discount: true, tax: true },
+      select: { date: true, total: true, paidAmount: true, paymentStatus: true, discount: true, tax: true, refundedAmount: true },
       orderBy: { date: 'asc' }
     });
 
-    const activeInvoices = invoices.filter(i => i.paymentStatus !== 'cancelled');
+    const activeInvoices = invoices.filter(i => !['cancelled', 'refunded'].includes(i.paymentStatus));
     const cancelledInvoices = invoices.filter(i => i.paymentStatus === 'cancelled');
+    const refundedInvoices = invoices.filter(i => i.paymentStatus === 'refunded');
 
     const summary = {
       totalInvoices: invoices.length,
@@ -73,8 +74,11 @@ router.get('/financial', authMiddleware, async (req, res) => {
       partial: activeInvoices.filter(i => i.paymentStatus === 'partial').length,
       paid: activeInvoices.filter(i => i.paymentStatus === 'paid').length,
       cancelled: cancelledInvoices.length,
-      refundedAmount: cancelledInvoices.reduce((s, i) => s + i.paidAmount, 0)
+      refunded: refundedInvoices.length,
+      refundedAmount: refundedInvoices.reduce((s, i) => s + i.refundedAmount, 0),
+      cancelledRefundAmount: cancelledInvoices.reduce((s, i) => s + i.paidAmount, 0)
     };
+    summary.totalRefunded = summary.refundedAmount + summary.cancelledRefundAmount;
     summary.totalUnpaid = summary.totalAmount - summary.totalPaid;
 
     res.json({ summary, invoices });

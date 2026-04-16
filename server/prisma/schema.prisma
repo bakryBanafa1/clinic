@@ -73,21 +73,22 @@ model Patient {
 }
 
 model Appointment {
-  id          Int      @id @default(autoincrement())
-  patientId   Int
-  doctorId    Int
-  date        String   // YYYY-MM-DD
-  startTime   String?  // HH:MM
-  endTime     String?  // HH:MM
-  period      String   @default("morning") // morning, evening
-  status      String   @default("pending") // pending, confirmed, cancelled, completed, no_show
-  notes       String?
-  queueNumber Int?
-  totalAmount Float    @default(0)
-  paidAmount  Float    @default(0)
-  paymentStatus String @default("unpaid") // unpaid, partial, paid
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  patientId       Int
+  doctorId        Int
+  date            String   // YYYY-MM-DD
+  startTime       String?  // HH:MM
+  endTime         String?  // HH:MM
+  period          String   @default("morning") // morning, evening
+  appointmentType String   @default("examination") // examination (معاينة), followup (مراجعة)
+  status          String   @default("pending") // pending, confirmed, cancelled, completed, no_show
+  notes           String?
+  queueNumber     Int?
+  totalAmount     Float    @default(0)
+  paidAmount      Float    @default(0)
+  paymentStatus   String   @default("unpaid") // unpaid, partial, paid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   patient     Patient      @relation(fields: [patientId], references: [id])
   doctor      Doctor       @relation(fields: [doctorId], references: [id])
@@ -165,23 +166,24 @@ model Prescription {
 }
 
 model Invoice {
-  id            Int      @id @default(autoincrement())
-  invoiceNumber String   @unique
-  patientId     Int
-  visitId       Int?     @unique
-  appointmentId Int?     @unique
-  date          DateTime @default(now())
-  items         String   // JSON array [{description, quantity, unitPrice, total}]
-  subtotal      Float    @default(0)
-  discount      Float    @default(0)
-  tax           Float    @default(0)
-  total         Float    @default(0)
-  paidAmount    Float    @default(0)
-  paymentStatus String   @default("unpaid") // unpaid, partial, paid
-  paymentMethod String?  // cash, card, transfer
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  invoiceNumber  String   @unique
+  patientId      Int
+  visitId        Int?     @unique
+  appointmentId  Int?     @unique
+  date           DateTime @default(now())
+  items          String   // JSON array [{description, quantity, unitPrice, total}]
+  subtotal       Float    @default(0)
+  discount       Float    @default(0)
+  tax            Float    @default(0)
+  total          Float    @default(0)
+  paidAmount     Float    @default(0)
+  refundedAmount Float    @default(0)
+  paymentStatus  String   @default("unpaid") // unpaid, partial, paid, refunded, cancelled
+  paymentMethod  String?  // cash, card, transfer
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   patient Patient @relation(fields: [patientId], references: [id])
   visit   Visit?  @relation(fields: [visitId], references: [id])
@@ -226,16 +228,17 @@ model FollowUp {
 }
 
 model QueueEntry {
-  id            Int       @id @default(autoincrement())
-  appointmentId Int       @unique
-  patientId     Int
-  doctorId      Int
-  date          String    // YYYY-MM-DD
-  queueNumber   Int
-  status        String    @default("waiting") // waiting, in_progress, completed, skipped
-  checkedInAt   DateTime  @default(now())
-  calledAt      DateTime?
-  completedAt   DateTime?
+  id              Int       @id @default(autoincrement())
+  appointmentId   Int       @unique
+  patientId       Int
+  doctorId        Int
+  date            String    // YYYY-MM-DD
+  queueNumber     Int
+  appointmentType String    @default("examination") // examination (معاينة), followup (مراجعة)
+  status          String    @default("waiting") // waiting, in_progress, completed, skipped
+  checkedInAt     DateTime  @default(now())
+  calledAt        DateTime?
+  completedAt     DateTime?
 
   appointment Appointment @relation(fields: [appointmentId], references: [id])
   patient     Patient     @relation(fields: [patientId], references: [id])
@@ -296,9 +299,33 @@ model ClinicSettings {
   whatsappEnabled        Boolean @default(false)
   whatsappNumber         String?
   minPaymentAmount      Float   @default(0)
+  queueExaminationRatio  Int     @default(1) // عدد المعاينات في كل دورة
+  queueFollowupRatio     Int     @default(1) // عدد المراجعات في كل دورة
   evolutionApiUrl        String?
   evolutionApiKey        String?
   evolutionInstanceName  String?
+  webhookUrl             String? // رابط الـ Webhook المسجل في Evolution API
+
+  // إعدادات إشعارات الواتساب
+  followupReminderEnabled     Boolean @default(true)
+  followupReminderDays        Int     @default(1)
+  followupReminderTemplate    String  @default("مرحباً {اسم_المريض}، نذكرك بموعد المراجعة لدى د. {اسم_الطبيب} بتاريخ {تاريخ_الموعد}. عيادة {اسم_العيادة} 🏥")
+
+  bookingConfirmEnabled       Boolean @default(true)
+  bookingConfirmTemplate      String  @default("مرحباً {اسم_المريض}، تم تأكيد حجزك لدى د. {اسم_الطبيب} بتاريخ {تاريخ_الموعد} - الفترة {وقت_الموعد}. عيادة {اسم_العيادة} ✅")
+
+  bookingCancelEnabled        Boolean @default(true)
+  bookingCancelTemplate       String  @default("مرحباً {اسم_المريض}، نأسف لإبلاغك بإلغاء موعدك بتاريخ {تاريخ_الموعد} لدى د. {اسم_الطبيب}. للحجز مجدداً تواصل معنا. عيادة {اسم_العيادة} ❌")
+
+  appointmentReminderEnabled  Boolean @default(true)
+  appointmentReminderDays     Int     @default(1)
+  appointmentReminderTemplate String  @default("مرحباً {اسم_المريض}، نذكرك بموعدك غداً لدى د. {اسم_الطبيب} - الفترة {وقت_الموعد}. عيادة {اسم_العيادة} 📅")
+
+  birthdayGreetingEnabled     Boolean @default(false)
+  birthdayGreetingTemplate    String  @default("كل عام وأنت بخير {اسم_المريض} 🎂🎉 يسعدنا أن نهنئك بعيد ميلادك ونتمنى لك دوام الصحة والعافية. عيادة {اسم_العيادة}")
+
+  postVisitEnabled            Boolean @default(false)
+  postVisitTemplate           String  @default("شكراً لزيارتك {اسم_المريض} 🙏 نتمنى لك السلامة والشفاء العاجل. لا تتردد في التواصل معنا عند الحاجة. عيادة {اسم_العيادة}")
 }
 
 model WhatsAppSession {

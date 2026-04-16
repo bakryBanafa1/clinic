@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import api from '../../utils/api';
-import { Save } from 'lucide-react';
+import { Save, CalendarClock } from 'lucide-react';
 
 const VisitForm = ({ patientId, doctorId, appointmentId, initialVisit, onClose, onSave }) => {
   const parseVitals = (vitalsStr) => {
@@ -28,6 +28,10 @@ const VisitForm = ({ patientId, doctorId, appointmentId, initialVisit, onClose, 
     vitalSigns: parseVitals(initialVisit?.vitalSigns)
   });
 
+  const [needsFollowUp, setNeedsFollowUp] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpReason, setFollowUpReason] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -42,11 +46,23 @@ const VisitForm = ({ patientId, doctorId, appointmentId, initialVisit, onClose, 
     });
   };
 
+  // حساب تاريخ المراجعة بناءً على عدد الأيام
+  const setFollowUpByDays = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    setFollowUpDate(d.toISOString().split('T')[0]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.patientId || !formData.doctorId) {
        setError('بيانات المريض أو الطبيب مفقودة');
        return;
+    }
+
+    if (needsFollowUp && !followUpDate) {
+      setError('الرجاء تحديد تاريخ المراجعة');
+      return;
     }
 
     try {
@@ -65,7 +81,8 @@ const VisitForm = ({ patientId, doctorId, appointmentId, initialVisit, onClose, 
         examination: formData.examination,
         treatmentPlan: formData.treatmentPlan,
         notes: formData.notes,
-        vitalSigns: hasVitals ? vitals : null
+        vitalSigns: hasVitals ? vitals : null,
+        ...(needsFollowUp && followUpDate ? { followUpDate, followUpReason } : {})
       };
 
       let data;
@@ -81,6 +98,11 @@ const VisitForm = ({ patientId, doctorId, appointmentId, initialVisit, onClose, 
       setLoading(false);
     }
   };
+
+  // حساب الحد الأدنى لتاريخ المراجعة (غداً)
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minFollowUpDate = tomorrow.toISOString().split('T')[0];
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -137,6 +159,61 @@ const VisitForm = ({ patientId, doctorId, appointmentId, initialVisit, onClose, 
         <textarea name="notes" value={formData.notes} onChange={handleChange} rows="2" className="form-textarea" />
       </div>
 
+      {/* قسم موعد المراجعة / العودة */}
+      <div className="rounded-lg border-2 overflow-hidden" style={{ borderColor: needsFollowUp ? '#0ea5e9' : '#e2e8f0' }}>
+        <div 
+          className="p-3 flex items-center gap-3 cursor-pointer" 
+          style={{ backgroundColor: needsFollowUp ? '#f0f9ff' : '#f8fafc' }}
+          onClick={() => setNeedsFollowUp(!needsFollowUp)}
+        >
+          <input 
+            type="checkbox" 
+            checked={needsFollowUp} 
+            onChange={(e) => setNeedsFollowUp(e.target.checked)} 
+            className="w-5 h-5 cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <CalendarClock size={20} style={{ color: needsFollowUp ? '#0ea5e9' : '#94a3b8' }} />
+          <span className="font-bold" style={{ color: needsFollowUp ? '#0369a1' : '#64748b' }}>
+            هل يحتاج المريض مراجعة (موعد عودة)؟
+          </span>
+        </div>
+
+        {needsFollowUp && (
+          <div className="p-4 border-t" style={{ borderColor: '#bae6fd', backgroundColor: '#f0f9ff' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="form-group mb-0">
+                <label className="text-sm font-bold">تاريخ المراجعة <span className="text-danger">*</span></label>
+                <input 
+                  type="date" 
+                  value={followUpDate} 
+                  onChange={(e) => setFollowUpDate(e.target.value)} 
+                  min={minFollowUpDate}
+                  className="form-input"
+                  required={needsFollowUp}
+                />
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <button type="button" className="px-2 py-1 text-xs rounded-md bg-primary-50 text-primary-700 border border-primary-200 cursor-pointer hover:bg-primary-100" onClick={() => setFollowUpByDays(3)}>بعد 3 أيام</button>
+                  <button type="button" className="px-2 py-1 text-xs rounded-md bg-primary-50 text-primary-700 border border-primary-200 cursor-pointer hover:bg-primary-100" onClick={() => setFollowUpByDays(7)}>بعد أسبوع</button>
+                  <button type="button" className="px-2 py-1 text-xs rounded-md bg-primary-50 text-primary-700 border border-primary-200 cursor-pointer hover:bg-primary-100" onClick={() => setFollowUpByDays(14)}>بعد أسبوعين</button>
+                  <button type="button" className="px-2 py-1 text-xs rounded-md bg-primary-50 text-primary-700 border border-primary-200 cursor-pointer hover:bg-primary-100" onClick={() => setFollowUpByDays(30)}>بعد شهر</button>
+                </div>
+              </div>
+              <div className="form-group mb-0">
+                <label className="text-sm font-bold">سبب المراجعة (اختياري)</label>
+                <textarea 
+                  value={followUpReason} 
+                  onChange={(e) => setFollowUpReason(e.target.value)} 
+                  rows="2" 
+                  className="form-textarea" 
+                  placeholder="مثال: متابعة نتائج التحاليل..."
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="modal-footer" style={{ marginTop: '1rem', marginLeft: '-1.5rem', marginRight: '-1.5rem', marginBottom: '-1.5rem' }}>
         <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>إلغاء</button>
         <button type="submit" className="btn-primary" disabled={loading}>
@@ -148,3 +225,4 @@ const VisitForm = ({ patientId, doctorId, appointmentId, initialVisit, onClose, 
 };
 
 export default VisitForm;
+

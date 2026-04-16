@@ -42,6 +42,7 @@ const ReportsPage = () => {
     { name: 'مدفوعة', value: financial.summary.paid, color: '#22c55e' },
     { name: 'جزئي', value: financial.summary.partial, color: '#f59e0b' },
     { name: 'غير مدفوعة', value: financial.summary.unpaid, color: '#ef4444' },
+    { name: 'مسترجعة', value: financial.summary.refunded || 0, color: '#8b5cf6' },
   ].filter(d => d.value > 0) : [];
 
   const genderData = patientReport?.genderStats ? patientReport.genderStats.map(g => ({
@@ -165,7 +166,7 @@ const ReportsPage = () => {
       {financial && (
         <div className="bg-surface rounded-xl border border-color shadow-sm mt-6 p-6">
           <h3 className="font-bold mb-4 flex items-center gap-2"><TrendingUp size={20}/> ملخص مالي</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
             <div className="p-4 bg-gray-50 rounded-lg text-center">
               <p className="text-muted text-sm mb-1">إجمالي الخصومات</p>
               <p className="text-lg font-bold en-font">{formatCurrency(financial.summary.totalDiscount)}</p>
@@ -173,6 +174,11 @@ const ReportsPage = () => {
             <div className="p-4 bg-gray-50 rounded-lg text-center">
               <p className="text-muted text-sm mb-1">إجمالي الضرائب</p>
               <p className="text-lg font-bold en-font">{formatCurrency(financial.summary.totalTax)}</p>
+            </div>
+            <div className="p-4 rounded-lg text-center" style={{ backgroundColor: '#f5f3ff' }}>
+              <p className="text-muted text-sm mb-1">مبالغ مسترجعة ⬅️</p>
+              <p className="text-lg font-bold en-font" style={{ color: '#7c3aed' }}>{formatCurrency(financial.summary.totalRefunded || 0)}</p>
+              <p className="text-xs text-muted mt-1">{(financial.summary.refunded || 0) + (financial.summary.cancelled || 0)} فاتورة ملغاة/مسترجعة</p>
             </div>
             <div className="p-4 bg-gray-50 rounded-lg text-center">
               <p className="text-muted text-sm mb-1">إجمالي الزيارات</p>

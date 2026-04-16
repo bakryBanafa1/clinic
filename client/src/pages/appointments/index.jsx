@@ -17,6 +17,9 @@ const AppointmentsList = () => {
   const [externalOrders, setExternalOrders] = useState([]);
   const [externalModalOpen, setExternalModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [selectedApptForStatus, setSelectedApptForStatus] = useState(null);
+  const [newStatus, setNewStatus] = useState('');
 
   useEffect(() => {
     fetchAppointments();
@@ -34,13 +37,27 @@ const AppointmentsList = () => {
     }
   };
 
-  const handleStatusChange = async (id, newStatus) => {
+  const handleStatusChange = async (id, newStatusVal, apptItem) => {
     try {
-      await api.put(`/appointments/${id}`, { status: newStatus });
+      // إذا كان الموعد المطلوب تعديله إلى "وصل" غير مدفوع بالكامل، نطلب الدفع أولاً (سواء جزئي أو كلي)
+      const currentAppt = apptItem || appointments.find(a => a.id === id);
+      if (newStatusVal === 'checked_in' && currentAppt && currentAppt.paymentStatus !== 'paid') {
+        setStatusModalOpen(false);
+        handleOpenPayment({ ...currentAppt, _pendingStatus: 'checked_in' });
+        return;
+      }
+
+      await api.put(`/appointments/${id}`, { status: newStatusVal });
       fetchAppointments();
+      setStatusModalOpen(false);
     } catch (err) {
       alert(err.message || 'خطأ في تحديث الحالة');
     }
+  };
+
+  const handleOpenEdit = (appt) => {
+    setEditingAppointment(appt);
+    setIsModalOpen(true);
   };
 
   const handleCheckin = async (appointmentId) => {
@@ -63,6 +80,10 @@ const AppointmentsList = () => {
     if (!amountToPay || amountToPay <= 0) return alert('الرجاء إدخال مبلغ صحيح');
     try {
       await api.put(`/appointments/${selectedApptToPay.id}/pay`, { amountToPay });
+      // إذا كان هناك حالة مؤجلة (مثل أنه كان يحاول أن يغير الحالة لـ وصل) نمضي بها قدماً
+      if (selectedApptToPay._pendingStatus) {
+        await api.put(`/appointments/${selectedApptToPay.id}`, { status: selectedApptToPay._pendingStatus });
+      }
       setPaymentModalOpen(false);
       fetchAppointments();
     } catch (err) {
@@ -71,9 +92,16 @@ const AppointmentsList = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('هل أنت متأكد من إلغاء هذا الموعد؟')) return;
+    const appt = appointments.find(a => a.id === id);
+    const refundMsg = appt && appt.paidAmount > 0 
+      ? `\n⚠️ سيتم استرجاع مبلغ ${appt.paidAmount} للمريض.`
+      : '';
+    if (!confirm(`هل أنت متأكد من إلغاء هذا الموعد؟${refundMsg}`)) return;
     try {
-      await api.delete(`/appointments/${id}`);
+      const result = await api.delete(`/appointments/${id}`);
+      if (result.refundAmount > 0) {
+        alert(`✅ ${result.message}`);
+      }
       fetchAppointments();
     } catch (err) {
       alert(err.message || 'خطأ في إلغاء الموعد');
@@ -81,15 +109,23 @@ const AppointmentsList = () => {
   };
 
   const handleSave = (savedAppointment) => {
+    // 🔒 إذا طلب النموذج فتح نافذة الدفع أولاً (تغيير الحالة لوصل قبل الدفع)
+    if (savedAppointment && savedAppointment._requiresPayment) {
+      setIsModalOpen(false);
+      setEditingAppointment(null);
+      handleOpenPayment(savedAppointment); // يفتح نافذة الدفع مع _pendingStatus
+      return;
+    }
+
     setIsModalOpen(false);
     setEditingAppointment(null);
-    
-    // Automatically switch to the date of the saved appointment so the user can see it
+
+    // الانتقال لتاريخ الموعد تلقائياً بعد الحفظ
     if (savedAppointment && savedAppointment.date) {
       if (dateFilter !== savedAppointment.date) {
-        setDateFilter(savedAppointment.date); // This will trigger fetchAppointments via useEffect
+        setDateFilter(savedAppointment.date);
       } else {
-        fetchAppointments(); // Same date, explicit refresh
+        fetchAppointments();
       }
     } else {
       fetchAppointments();
@@ -169,6 +205,7 @@ const AppointmentsList = () => {
                 <th>اسم المريض</th>
                 <th>الطبيب</th>
                 <th>الفترة</th>
+                <th>النوع</th>
                 <th>حالة الدفع</th>
                 <th>الحالة</th>
                 <th>الإجراءات</th>
@@ -176,9 +213,9 @@ const AppointmentsList = () => {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="7" className="text-center p-8 text-muted">جاري التحميل...</td></tr>
+                <tr><td colSpan="8" className="text-center p-8 text-muted">جاري التحميل...</td></tr>
               ) : appointments.length === 0 ? (
-                <tr><td colSpan="7" className="text-center p-8 text-muted">لا يوجد مواعيد في هذا اليوم</td></tr>
+                <tr><td colSpan="8" className="text-center p-8 text-muted">لا يوجد مواعيد في هذا اليوم</td></tr>
               ) : (
                 appointments.map(app => (
                   <tr key={app.id}>
@@ -186,6 +223,13 @@ const AppointmentsList = () => {
                     <td className="font-bold">{app.patient?.name}</td>
                     <td>{app.doctor?.user?.name}</td>
                     <td>{app.period === 'morning' ? 'صباحي' : 'مسائي'}</td>
+                    <td>
+                      {app.appointmentType === 'followup' ? (
+                        <span className="px-2 py-1 text-xs font-bold rounded-md" style={{ backgroundColor: '#dbeafe', color: '#1d4ed8' }}>🔄 مراجعة</span>
+                      ) : (
+                        <span className="px-2 py-1 text-xs font-bold rounded-md" style={{ backgroundColor: '#dcfce7', color: '#15803d' }}>🩺 معاينة</span>
+                      )}
+                    </td>
                     <td>
                       {app.paymentStatus === 'paid' ? (
                         <span className="px-2 py-1 text-xs font-bold rounded-md bg-green-100 text-green-700">دفع بالكامل 🟢</span>
@@ -204,8 +248,8 @@ const AppointmentsList = () => {
                       <div className="flex gap-2">
                          {app.status === 'pending' && (
                            <>
-                             <button onClick={() => handleStatusChange(app.id, 'confirmed')} className="action-btn text-success-600" title="تأكيد"><CheckCircle size={18}/></button>
-                             <button onClick={() => handleStatusChange(app.id, 'cancelled')} className="action-btn text-danger-600" title="إلغاء"><XCircle size={18}/></button>
+                             <button onClick={() => handleStatusChange(app.id, 'confirmed', app)} className="action-btn text-success-600" title="تأكيد"><CheckCircle size={18}/></button>
+                             <button onClick={() => handleStatusChange(app.id, 'cancelled', app)} className="action-btn text-danger-600" title="إلغاء"><XCircle size={18}/></button>
                            </>
                          )}
                          {app.status === 'confirmed' && (
@@ -219,6 +263,7 @@ const AppointmentsList = () => {
                                </button>
                              )
                          )}
+                         <button onClick={() => handleOpenEdit(app)} className="action-btn text-blue-600" title="تعديل الموعد"><Pencil size={16}/></button>
                          {(app.status !== 'cancelled' && app.status !== 'completed') && (
                            <button onClick={() => handleDelete(app.id)} className="action-btn text-danger" title="حذف الموعد"><Trash2 size={16}/></button>
                          )}
@@ -232,8 +277,8 @@ const AppointmentsList = () => {
         </div>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingAppointment(null); setSelectedOrder(null); }} title="حجز موعد جديد" size="lg">
-        <AppointmentForm onClose={() => { setIsModalOpen(false); setEditingAppointment(null); setSelectedOrder(null); }} onSave={handleSave} defaultPhone={selectedOrder?.phone} orderMessage={selectedOrder?.message} />
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingAppointment(null); setSelectedOrder(null); }} title={editingAppointment ? `✏️ تعديل موعد: ${editingAppointment.patient?.name}` : 'حجز موعد جديد'} size="lg">
+        <AppointmentForm appointment={editingAppointment} onClose={() => { setIsModalOpen(false); setEditingAppointment(null); setSelectedOrder(null); }} onSave={handleSave} defaultPhone={selectedOrder?.phone} orderMessage={selectedOrder?.message} />
       </Modal>
 
       <Modal isOpen={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="إكمال دفع الموعد" size="sm">
@@ -291,6 +336,28 @@ const AppointmentsList = () => {
               </tbody>
             </table>
           </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={statusModalOpen} onClose={() => setStatusModalOpen(false)} title="تعديل حالة الموعد" size="sm">
+        {selectedApptForStatus && (
+          <form onSubmit={(e) => { e.preventDefault(); handleStatusChange(selectedApptForStatus.id, newStatus, selectedApptForStatus); }} className="flex flex-col gap-4">
+            <div className="form-group">
+              <label>حالة الموعد</label>
+              <select value={newStatus} onChange={e => setNewStatus(e.target.value)} className="form-select">
+                <option value="pending">قيد الانتظار</option>
+                <option value="confirmed">مؤكد</option>
+                <option value="checked_in">وصل (بالانتظار)</option>
+                <option value="in_progress">عند الطبيب</option>
+                <option value="completed">مكتمل</option>
+                <option value="cancelled">ملغي</option>
+              </select>
+            </div>
+            <div className="modal-footer" style={{ marginTop: '1rem', marginLeft: '-1.5rem', marginRight: '-1.5rem', marginBottom: '-1.5rem' }}>
+              <button type="button" className="btn-secondary" onClick={() => setStatusModalOpen(false)}>إلغاء</button>
+              <button type="submit" className="btn-primary">حفظ الحالة</button>
+            </div>
+          </form>
         )}
       </Modal>
     </div>

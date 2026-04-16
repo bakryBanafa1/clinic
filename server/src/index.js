@@ -1,9 +1,13 @@
+// السماح بشهادات SSL الذاتية (مطلوب لـ Evolution API)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const path = require('path');
 const { initSocket } = require('./socket');
 const { startCronJobs } = require('./services/cron.service');
+const { initializeWhatsApp } = require('./services/whatsapp-init.service');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,7 +19,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Static files
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '../uploads');
+app.use('/uploads', express.static(uploadsDir));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -52,4 +57,5 @@ server.listen(PORT, () => {
   console.log(`\n🏥 Clinic Server running on http://localhost:${PORT}`);
   console.log(`📡 API available at http://localhost:${PORT}/api`);
   startCronJobs();
+  initializeWhatsApp();
 });

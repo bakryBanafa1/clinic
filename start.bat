@@ -1,6 +1,6 @@
 @echo off
 echo ===================================================
-echo Starting Clinic Management System (Frontend & Backend)
+echo Starting Clinic Management System (Frontend and Backend)
 echo ===================================================
 
 echo [1/2] Starting Backend Server...

@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { authMiddleware } = require('../middleware/auth');
+const { renderTemplate, sendWhatsAppMessage } = require('../lib/utils');
 const router = express.Router();
 
 // جلب المواعيد مع فلاتر
@@ -72,7 +73,7 @@ router.get('/availability', authMiddleware, async (req, res) => {
 // إنشاء موعد
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { patientId, doctorId, date, startTime, endTime, period, notes, paidAmount = 0 } = req.body;
+    const { patientId, doctorId, date, startTime, endTime, period, appointmentType = 'examination', notes, paidAmount = 0 } = req.body;
     if (!patientId || !doctorId || !date) {
       return res.status(400).json({ error: 'يرجى تعبئة البيانات المطلوبة' });
     }
@@ -139,6 +140,7 @@ router.post('/', authMiddleware, async (req, res) => {
           startTime,
           endTime,
           period: period || 'morning',
+          appointmentType: appointmentType || 'examination',
           notes,
           status: apptStatus,
           queueNumber: existingAppts + 1,
@@ -177,13 +179,36 @@ router.post('/', authMiddleware, async (req, res) => {
             patientId: appt.patientId,
             doctorId: appt.doctorId,
             date: appt.date,
-            queueNumber: appt.queueNumber || 999
+            queueNumber: appt.queueNumber || 999,
+            appointmentType: appt.appointmentType || 'examination'
           }
         });
       }
 
       return appt;
     });
+
+    // إرسال إشعار واتساب تلقائي عند الحجز (في الخلفية - لا يؤثر على الحجز)
+    try {
+      const clinicSettings = await prisma.clinicSettings.findFirst();
+      if (clinicSettings && clinicSettings.bookingConfirmEnabled && appointment.patient?.phone) {
+        const variables = {
+          'اسم_المريض': appointment.patient.name,
+          'اسم_الطبيب': appointment.doctor?.user?.name || '',
+          'تاريخ_الموعد': appointment.date,
+          'وقت_الموعد': appointment.period === 'morning' ? 'الصباحية' : 'المسائية',
+          'اسم_العيادة': clinicSettings.clinicName || 'العيادة',
+          'رقم_الملف': ''
+        };
+        // جلب رقم الملف
+        const patientInfo = await prisma.patient.findUnique({ where: { id: appointment.patientId }, select: { fileNumber: true } });
+        variables['رقم_الملف'] = patientInfo?.fileNumber || '';
+        const msg = renderTemplate(clinicSettings.bookingConfirmTemplate, variables);
+        sendWhatsAppMessage(clinicSettings, appointment.patient.phone, msg).catch(e => console.error('WhatsApp booking notify error:', e));
+      }
+    } catch (whatsappErr) {
+      console.error('WhatsApp booking notification error (non-blocking):', whatsappErr);
+    }
 
     res.status(201).json(appointment);
   } catch (err) {
@@ -192,20 +217,192 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// تحديث حالة موعد
+// تحديث بيانات موعد (كامل)
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
-    const { status, notes, startTime, endTime, date, period } = req.body;
+    const { status, notes, startTime, endTime, date, period, doctorId, appointmentType } = req.body;
+    const appointmentId = parseInt(req.params.id);
+
+    const oldAppt = await prisma.appointment.findUnique({ where: { id: appointmentId } });
+    if (!oldAppt) return res.status(404).json({ error: 'الموعد غير موجود' });
+
+    const newDoctorId  = doctorId  ? parseInt(doctorId)  : oldAppt.doctorId;
+    const newDate      = date      || oldAppt.date;
+    const newPeriod    = period    || oldAppt.period;
+
+    // إذا تغيّر الطبيب أو التاريخ أو الفترة نتحقق من الطاقة الاستيعابية
+    const doctorChanged = newDoctorId !== oldAppt.doctorId;
+    const dateChanged   = newDate !== oldAppt.date;
+    const periodChanged = newPeriod !== oldAppt.period;
+
+    if ((doctorChanged || dateChanged || periodChanged) && status !== 'cancelled') {
+      const dayOfWeek = new Date(newDate).getDay();
+      const schedule = await prisma.doctorSchedule.findFirst({
+        where: { doctorId: newDoctorId, dayOfWeek, isActive: true }
+      });
+      if (!schedule) return res.status(400).json({ error: 'الطبيب لا يعمل في هذا اليوم' });
+
+      const existingCount = await prisma.appointment.count({
+        where: {
+          doctorId: newDoctorId,
+          date: newDate,
+          period: newPeriod,
+          status: { not: 'cancelled' },
+          id: { not: appointmentId } // استثناء الموعد الحالي من الحساب
+        }
+      });
+      const capacity = newPeriod === 'morning' ? schedule.morningCapacity : schedule.eveningCapacity;
+      if (existingCount >= capacity) {
+        return res.status(400).json({ error: 'الفترة ممتلئة - لا يمكن نقل الموعد لهنا' });
+      }
+    }
+
+    // إذا تغيّر الطبيب نحدث رسوم الكشفية
+    let newTotalAmount = oldAppt.totalAmount;
+    if (doctorChanged) {
+      const newDoctor = await prisma.doctor.findUnique({ where: { id: newDoctorId } });
+      if (newDoctor) newTotalAmount = newDoctor.consultationFee || 0;
+    }
+
+    let updateData = {
+      notes,
+      startTime,
+      endTime,
+      date: newDate,
+      period: newPeriod,
+      doctorId: newDoctorId,
+      totalAmount: newTotalAmount,
+      ...(appointmentType ? { appointmentType } : {}),
+      ...(status         ? { status }         : {})
+    };
+
+    let refundAmount = 0;
+    // إذا تغيرت الحالة إلى ملغي، نصفّر الحالة المالية
+    if (status === 'cancelled' && oldAppt.status !== 'cancelled') {
+      refundAmount = oldAppt.paidAmount || 0;
+      updateData.paidAmount = 0;
+      updateData.paymentStatus = 'unpaid';
+    }
+
     const appointment = await prisma.appointment.update({
-      where: { id: parseInt(req.params.id) },
-      data: { status, notes, startTime, endTime, date, period },
+      where: { id: appointmentId },
+      data: updateData,
       include: {
         patient: { select: { name: true, phone: true } },
         doctor: { include: { user: { select: { name: true } } } }
       }
     });
+
+    // تحديث الفاتورة في حال تغير المبلغ (تغير الطبيب) أو الإلغاء
+    const invoice = await prisma.invoice.findUnique({ where: { appointmentId } });
+    if (invoice) {
+        if (status === 'cancelled' && oldAppt.status !== 'cancelled') {
+            await prisma.invoice.update({
+                where: { id: invoice.id },
+                data: {
+                    paymentStatus: refundAmount > 0 ? 'refunded' : 'cancelled',
+                    refundedAmount: refundAmount,
+                    paidAmount: 0
+                }
+            });
+        } else if (doctorChanged) {
+            // تحديث مبلغ الفاتورة وتفاصيلها إذا تغير الطبيب
+            await prisma.invoice.update({
+                where: { id: invoice.id },
+                data: {
+                    total: newTotalAmount,
+                    subtotal: newTotalAmount,
+                    items: JSON.stringify([{ description: 'كشفية طبيب', quantity: 1, unitPrice: newTotalAmount, total: newTotalAmount }])
+                }
+            });
+        }
+    }
+
+    // معالجة تحديثات الدور بناءً على الحالة الجديدة
+    if (status) {
+      const existingQueue = await prisma.queueEntry.findUnique({ where: { appointmentId } });
+      
+      if (status === 'checked_in') {
+        if (!existingQueue) {
+          // إضافة المريض للدور إذا لم يكن مسجلا
+          await prisma.queueEntry.create({
+            data: {
+              appointmentId: appointment.id,
+              patientId: appointment.patientId,
+              doctorId: appointment.doctorId,
+              date: appointment.date,
+              queueNumber: appointment.queueNumber || 999,
+              appointmentType: appointment.appointmentType || 'examination',
+              status: 'waiting'
+            }
+          });
+        } else if (existingQueue.status !== 'waiting' && existingQueue.status !== 'in_progress') {
+          // إعادة تفعيله في الدور
+          await prisma.queueEntry.update({
+            where: { id: existingQueue.id },
+            data: { status: 'waiting' }
+          });
+        }
+      } else if (status === 'cancelled' || status === 'completed') {
+        if (existingQueue && existingQueue.status !== 'completed' && existingQueue.status !== 'skipped') {
+          const qStatus = status === 'cancelled' ? 'skipped' : 'completed';
+          await prisma.queueEntry.update({
+            where: { id: existingQueue.id },
+            data: { status: qStatus }
+          });
+        }
+      }
+    }
+
+    // إرسال إشعار واتساب عند إلغاء الموعد (في الخلفية)
+    if (status === 'cancelled' && oldAppt.status !== 'cancelled') {
+      try {
+        const clinicSettings = await prisma.clinicSettings.findFirst();
+        if (clinicSettings && clinicSettings.bookingCancelEnabled && appointment.patient?.phone) {
+          const variables = {
+            'اسم_المريض': appointment.patient.name,
+            'اسم_الطبيب': appointment.doctor?.user?.name || '',
+            'تاريخ_الموعد': appointment.date,
+            'وقت_الموعد': appointment.period === 'morning' ? 'الصباحية' : 'المسائية',
+            'اسم_العيادة': clinicSettings.clinicName || 'العيادة',
+            'رقم_الملف': ''
+          };
+          const patientInfo = await prisma.patient.findUnique({ where: { id: appointment.patientId }, select: { fileNumber: true } });
+          variables['رقم_الملف'] = patientInfo?.fileNumber || '';
+          const msg = renderTemplate(clinicSettings.bookingCancelTemplate, variables);
+          sendWhatsAppMessage(clinicSettings, appointment.patient.phone, msg).catch(e => console.error('WhatsApp cancel notify error:', e));
+        }
+      } catch (whatsappErr) {
+        console.error('WhatsApp cancel notification error (non-blocking):', whatsappErr);
+      }
+    }
+
+    // إرسال رسالة شكر بعد الزيارة عند إكمال الموعد
+    if (status === 'completed' && oldAppt.status !== 'completed') {
+      try {
+        const clinicSettings = await prisma.clinicSettings.findFirst();
+        if (clinicSettings && clinicSettings.postVisitEnabled && appointment.patient?.phone) {
+          const variables = {
+            'اسم_المريض': appointment.patient.name,
+            'اسم_الطبيب': appointment.doctor?.user?.name || '',
+            'تاريخ_الموعد': appointment.date,
+            'وقت_الموعد': '',
+            'اسم_العيادة': clinicSettings.clinicName || 'العيادة',
+            'رقم_الملف': ''
+          };
+          const patientInfo = await prisma.patient.findUnique({ where: { id: appointment.patientId }, select: { fileNumber: true } });
+          variables['رقم_الملف'] = patientInfo?.fileNumber || '';
+          const msg = renderTemplate(clinicSettings.postVisitTemplate, variables);
+          sendWhatsAppMessage(clinicSettings, appointment.patient.phone, msg).catch(e => console.error('WhatsApp post-visit notify error:', e));
+        }
+      } catch (whatsappErr) {
+        console.error('WhatsApp post-visit notification error (non-blocking):', whatsappErr);
+      }
+    }
+
     res.json(appointment);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'خطأ في الخادم' });
   }
 });
@@ -251,13 +448,16 @@ router.put('/:id/pay', authMiddleware, async (req, res) => {
       if (newApptStatus === 'checked_in') {
          const existingQueue = await tx.queueEntry.findUnique({ where: { appointmentId: appt.id } });
          if (!existingQueue) {
+            // جلب نوع الحجز من الموعد الأصلي
+            const fullAppt = await tx.appointment.findUnique({ where: { id: appt.id } });
             await tx.queueEntry.create({
               data: {
                 appointmentId: appt.id,
                 patientId: appt.patientId,
                 doctorId: appt.doctorId,
                 date: appt.date,
-                queueNumber: appt.queueNumber || 999
+                queueNumber: appt.queueNumber || 999,
+                appointmentType: fullAppt?.appointmentType || 'examination'
               }
             });
          }
@@ -272,29 +472,38 @@ router.put('/:id/pay', authMiddleware, async (req, res) => {
   }
 });
 
-// حذف موعد واسترجاع الفاتورة
+// حذف موعد واسترجاع الفاتورة مع تسجيل المبلغ المرجع
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const appointmentId = parseInt(req.params.id);
     
-    await prisma.$transaction(async (tx) => {
-      // 1. إلغاء الموعد
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. جلب الموعد لمعرفة المبلغ المدفوع
+      const appointment = await tx.appointment.findUnique({ where: { id: appointmentId } });
+      if (!appointment) throw new Error('الموعد غير موجود');
+
+      const refundAmount = appointment.paidAmount || 0;
+
+      // 2. إلغاء الموعد + تصفير المبلغ المدفوع
       await tx.appointment.update({
         where: { id: appointmentId },
-        data: { status: 'cancelled' }
+        data: { status: 'cancelled', paidAmount: 0, paymentStatus: 'unpaid' }
       });
 
-      // 2. إلغاء الفاتورة المرتبطة بالموعد لكي لا تحتسب في التقارير كإيرادات
+      // 3. تحديث الفاتورة: تسجيل المبلغ المرجع وتصفير المدفوع
       const invoice = await tx.invoice.findUnique({ where: { appointmentId } });
-      if (invoice && invoice.paymentStatus !== 'cancelled') {
+      if (invoice && invoice.paymentStatus !== 'refunded') {
         await tx.invoice.update({
           where: { id: invoice.id },
-          data: { paymentStatus: 'cancelled' } 
-          // نحتفظ بـ paidAmount لكي نعلم كم المبلغ الذي تم رده للمريض (استرجاع)
+          data: { 
+            paymentStatus: refundAmount > 0 ? 'refunded' : 'cancelled',
+            refundedAmount: refundAmount,
+            paidAmount: 0
+          }
         });
       }
 
-      // 3. إلغاء دخوله من طابور الطبيب إن كان قد دخل بالفعل
+      // 4. إلغاء دخوله من طابور الطبيب إن كان قد دخل بالفعل
       const queue = await tx.queueEntry.findUnique({ where: { appointmentId } });
       if (queue && queue.status !== 'completed') {
         await tx.queueEntry.update({
@@ -302,11 +511,18 @@ router.delete('/:id', authMiddleware, async (req, res) => {
           data: { status: 'skipped' }
         });
       }
+
+      return { refundAmount };
     });
 
-    res.json({ message: 'تم إلغاء الموعد بنجاح وتحديث السجلات المالية' });
+    const msg = result.refundAmount > 0 
+      ? `تم إلغاء الموعد بنجاح. يجب استرجاع مبلغ ${result.refundAmount} للمريض.`
+      : 'تم إلغاء الموعد بنجاح.';
+
+    res.json({ message: msg, refundAmount: result.refundAmount });
   } catch (err) {
-    res.status(500).json({ error: 'خطأ في الخادم' });
+    console.error(err);
+    res.status(500).json({ error: err.message || 'خطأ في الخادم' });
   }
 });
 

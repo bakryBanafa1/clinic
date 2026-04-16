@@ -26,7 +26,16 @@ async function fetchWithAuth(endpoint, options = {}) {
     throw new Error('انتهت الجلسة، يرجى تسجيل الدخول مجدداً');
   }
 
-  const data = await response.json();
+  let data;
+  try {
+    const text = await response.text();
+    data = text ? JSON.parse(text) : {};
+  } catch (err) {
+    if (!response.ok) {
+      throw new Error(`خطأ في الاتصال بالخادم (${response.status}). يرجى التأكد من تشغيل Backend.`);
+    }
+    data = {};
+  }
 
   if (!response.ok) {
     throw new Error(data.error || 'حدث خطأ غير معروف');

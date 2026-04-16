@@ -51,7 +51,9 @@ router.delete('/delete/:fileId', authMiddleware, async (req, res) => {
     if (!file) return res.status(404).json({ error: 'الملف غير موجود' });
 
     // حذف الملف الفعلي
-    const fullPath = path.join(__dirname, '../../', file.filePath);
+    const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
+    const relativePath = file.filePath.replace(/^\/uploads\//, '');
+    const fullPath = path.join(uploadsDir, relativePath);
     if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
 
     await prisma.patientFile.delete({ where: { id: parseInt(req.params.fileId) } });

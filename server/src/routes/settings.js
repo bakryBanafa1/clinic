@@ -27,7 +27,8 @@ router.put('/', authMiddleware, async (req, res) => {
       workingHours, defaultMorningCapacity, defaultEveningCapacity,
       appointmentDuration, currency, taxRate,
       invoiceNotes, prescriptionNotes, headerColor,
-      whatsappEnabled, whatsappNumber, minPaymentAmount
+      whatsappEnabled, whatsappNumber, minPaymentAmount,
+      queueExaminationRatio, queueFollowupRatio
     } = req.body;
 
     let settings = await prisma.clinicSettings.findFirst();
@@ -47,7 +48,9 @@ router.put('/', authMiddleware, async (req, res) => {
         currency, taxRate: taxRate !== undefined ? parseFloat(taxRate) : undefined,
         invoiceNotes, prescriptionNotes, headerColor,
         whatsappEnabled, whatsappNumber,
-        minPaymentAmount: minPaymentAmount !== undefined ? parseFloat(minPaymentAmount) : undefined
+        minPaymentAmount: minPaymentAmount !== undefined ? parseFloat(minPaymentAmount) : undefined,
+        queueExaminationRatio: queueExaminationRatio !== undefined ? parseInt(queueExaminationRatio) : undefined,
+        queueFollowupRatio: queueFollowupRatio !== undefined ? parseInt(queueFollowupRatio) : undefined
       }
     });
 

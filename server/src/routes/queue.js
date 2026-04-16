@@ -3,7 +3,30 @@ const prisma = require('../lib/prisma');
 const { authMiddleware } = require('../middleware/auth');
 const router = express.Router();
 
-// جلب الدور لتاريخ معين
+// دالة ترتيب الدور بالتبادل بين المعاينات والمراجعات
+function interleaveQueue(waitingEntries, examRatio, followupRatio) {
+  const examinations = waitingEntries.filter(e => e.appointmentType === 'examination');
+  const followups = waitingEntries.filter(e => e.appointmentType === 'followup');
+  
+  const result = [];
+  let examIdx = 0;
+  let followupIdx = 0;
+  
+  while (examIdx < examinations.length || followupIdx < followups.length) {
+    // أضف المعاينات حسب النسبة
+    for (let i = 0; i < examRatio && examIdx < examinations.length; i++) {
+      result.push(examinations[examIdx++]);
+    }
+    // أضف المراجعات حسب النسبة
+    for (let i = 0; i < followupRatio && followupIdx < followups.length; i++) {
+      result.push(followups[followupIdx++]);
+    }
+  }
+  
+  return result;
+}
+
+// جلب الدور لتاريخ معين مع ترتيب ذكي
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const { date, doctorId, status } = req.query;
@@ -17,12 +40,29 @@ router.get('/', authMiddleware, async (req, res) => {
       include: {
         patient: { select: { id: true, name: true, fileNumber: true, phone: true } },
         doctor: { include: { user: { select: { name: true } } } },
-        appointment: { select: { period: true, startTime: true } }
+        appointment: { select: { period: true, startTime: true, appointmentType: true } }
       },
       orderBy: { queueNumber: 'asc' }
     });
-    res.json(queue);
+
+    // جلب إعدادات الترتيب
+    const settings = await prisma.clinicSettings.findFirst();
+    const examRatio = settings?.queueExaminationRatio || 1;
+    const followupRatio = settings?.queueFollowupRatio || 1;
+
+    // فصل المنتظرين عن البقية
+    const waiting = queue.filter(q => q.status === 'waiting');
+    const others = queue.filter(q => q.status !== 'waiting');
+
+    // ترتيب المنتظرين بالتبادل
+    const sortedWaiting = interleaveQueue(waiting, examRatio, followupRatio);
+
+    // دمج الترتيب: المنتظرون المرتبون + البقية (in_progress, completed, skipped)
+    const finalQueue = [...sortedWaiting, ...others];
+
+    res.json(finalQueue);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'خطأ في الخادم' });
   }
 });
@@ -54,7 +94,8 @@ router.post('/checkin', authMiddleware, async (req, res) => {
         doctorId: appointment.doctorId,
         date: appointment.date,
         // سحب رقم الدور الأصلي من الموعد لضمان أولوية الحجز وعدم تخطي من دفع جزئياً
-        queueNumber: appointment.queueNumber || 999 
+        queueNumber: appointment.queueNumber || 999,
+        appointmentType: appointment.appointmentType || 'examination'
       },
       include: {
         patient: { select: { name: true, fileNumber: true } },

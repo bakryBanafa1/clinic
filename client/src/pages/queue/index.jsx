@@ -17,8 +17,11 @@ const QueuePage = () => {
 
   const fetchQueue = async () => {
     try {
+      setLoading(true);
       const data = await api.get('/queue');
-      setQueue(data);
+      // فلترة الحالات الملغاة للتأكد من عدم ظهورها
+      const activeQueue = data.filter(q => q.status !== 'skipped' && q.appointment?.status !== 'cancelled');
+      setQueue(activeQueue || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -82,6 +85,11 @@ const QueuePage = () => {
                     <div>
                        <div className="flex items-center gap-3 mb-1">
                           <span className="bg-primary-100 text-primary-800 font-bold px-2 py-1 rounded-md">رقم الدور: {entry.queueNumber}</span>
+                          {(entry.appointmentType || entry.appointment?.appointmentType) === 'followup' ? (
+                            <span className="px-2 py-1 text-xs font-bold rounded-md" style={{ backgroundColor: '#dbeafe', color: '#1d4ed8' }}>🔄 مراجعة</span>
+                          ) : (
+                            <span className="px-2 py-1 text-xs font-bold rounded-md" style={{ backgroundColor: '#dcfce7', color: '#15803d' }}>🩺 معاينة</span>
+                          )}
                           <span className="font-bold text-lg">{entry.patient?.name}</span>
                        </div>
                        <p className="text-sm text-muted mt-2">الطبيب: {entry.doctor?.user?.name}</p>
@@ -100,9 +108,16 @@ const QueuePage = () => {
             {queue.filter(q => q.status === 'in_progress').length === 0 ? (
                  <p className="text-center text-muted">العيادة فارغة حالياً</p>
             ) : queue.filter(q => q.status === 'in_progress').map(entry => (
-                 <div key={entry.id} className="bg-white border border-primary-300 rounded-xl p-6 w-full shadow-md text-center">
-                    <h2 className="text-3xl font-bold text-primary-700 mb-2">{entry.patient?.name}</h2>
-                    <p className="text-muted text-lg mb-6">رقم الدور: <b className="en-font">{entry.queueNumber}</b> | الطبيب: {entry.doctor?.user?.name}</p>
+                  <div key={entry.id} className="bg-white border border-primary-300 rounded-xl p-6 w-full shadow-md text-center">
+                     <h2 className="text-3xl font-bold text-primary-700 mb-2">{entry.patient?.name}</h2>
+                     <p className="text-muted text-lg mb-2">رقم الدور: <b className="en-font">{entry.queueNumber}</b> | الطبيب: {entry.doctor?.user?.name}</p>
+                     <div className="mb-4">
+                       {(entry.appointmentType || entry.appointment?.appointmentType) === 'followup' ? (
+                         <span className="px-3 py-1 text-sm font-bold rounded-full" style={{ backgroundColor: '#dbeafe', color: '#1d4ed8' }}>🔄 مراجعة</span>
+                       ) : (
+                         <span className="px-3 py-1 text-sm font-bold rounded-full" style={{ backgroundColor: '#dcfce7', color: '#15803d' }}>🩺 معاينة</span>
+                       )}
+                     </div>
                     
                     <div className="flex gap-3 justify-center mt-2 flex-wrap">
                        <button className="btn-secondary text-primary-700 font-bold flex items-center gap-2 border-primary-200" onClick={() => openVisitForm(entry)}>

@@ -40,6 +40,7 @@ export const getStatusText = (status) => {
     paid: 'مدفوعة',
     partial: 'مدفوع جزئياً',
     unpaid: 'غير مدفوعة',
+    refunded: 'مسترجعة',
     // Follow-up statuses
     reminded: 'تم التذكير',
     missed: 'فائت',
@@ -67,6 +68,7 @@ export const getStatusColor = (status) => {
     paid: '#22c55e',
     partial: '#f59e0b',
     unpaid: '#ef4444',
+    refunded: '#8b5cf6',
     // Follow-up
     reminded: '#0ea5e9',
     missed: '#ef4444',

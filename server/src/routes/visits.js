@@ -35,39 +35,69 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// إنشاء زيارة
+// إنشاء زيارة مع إمكانية تحديد موعد المراجعة
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { patientId, doctorId, appointmentId, chiefComplaint, diagnosis, examination, treatmentPlan, notes, vitalSigns } = req.body;
+    const { patientId, doctorId, appointmentId, chiefComplaint, diagnosis, examination, treatmentPlan, notes, vitalSigns, followUpDate, followUpReason } = req.body;
     if (!patientId || !doctorId) return res.status(400).json({ error: 'بيانات ناقصة' });
 
-    const visit = await prisma.visit.create({
-      data: {
-        patientId: parseInt(patientId),
-        doctorId: parseInt(doctorId),
-        appointmentId: appointmentId ? parseInt(appointmentId) : null,
-        chiefComplaint,
-        diagnosis,
-        examination,
-        treatmentPlan,
-        notes,
-        vitalSigns: vitalSigns ? JSON.stringify(vitalSigns) : null
-      },
-      include: {
-        patient: { select: { name: true, fileNumber: true } },
-        doctor: { include: { user: { select: { name: true } } } }
+    const result = await prisma.$transaction(async (tx) => {
+      const visit = await tx.visit.create({
+        data: {
+          patientId: parseInt(patientId),
+          doctorId: parseInt(doctorId),
+          appointmentId: appointmentId ? parseInt(appointmentId) : null,
+          chiefComplaint,
+          diagnosis,
+          examination,
+          treatmentPlan,
+          notes,
+          vitalSigns: vitalSigns ? JSON.stringify(vitalSigns) : null
+        },
+        include: {
+          patient: { select: { name: true, fileNumber: true, phone: true } },
+          doctor: { include: { user: { select: { name: true } } } }
+        }
+      });
+
+      // تحديث حالة الموعد إلى مكتمل
+      if (appointmentId) {
+        await tx.appointment.update({
+          where: { id: parseInt(appointmentId) },
+          data: { status: 'completed' }
+        });
       }
+
+      // إنشاء موعد مراجعة تلقائياً إذا حدد الطبيب تاريخ العودة
+      let followUp = null;
+      if (followUpDate) {
+        const visitDate = new Date(visit.visitDate);
+        const followDate = new Date(followUpDate);
+        const daysAfter = Math.max(1, Math.ceil((followDate - visitDate) / (1000 * 60 * 60 * 24)));
+        
+        // حساب تاريخ التذكير (يوم قبل الموعد)
+        const reminderDate = new Date(followDate);
+        reminderDate.setDate(reminderDate.getDate() - 1);
+        const reminderStr = reminderDate.toISOString().split('T')[0];
+
+        followUp = await tx.followUp.create({
+          data: {
+            patientId: parseInt(patientId),
+            doctorId: parseInt(doctorId),
+            visitId: visit.id,
+            scheduledDate: followUpDate,
+            daysAfterVisit: daysAfter,
+            reason: followUpReason || 'مراجعة بعد الزيارة',
+            reminderDate: reminderStr,
+            notes: `تم تحديد المراجعة من قبل الطبيب أثناء الزيارة`
+          }
+        });
+      }
+
+      return { visit, followUp };
     });
 
-    // تحديث حالة الموعد إلى مكتمل
-    if (appointmentId) {
-      await prisma.appointment.update({
-        where: { id: parseInt(appointmentId) },
-        data: { status: 'completed' }
-      });
-    }
-
-    res.status(201).json(visit);
+    res.status(201).json(result.visit);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'خطأ في الخادم' });
