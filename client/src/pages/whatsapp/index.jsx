@@ -190,11 +190,11 @@ const WhatsAppConnection = () => {
       const data = await api.get('/evolution/instance/status');
       setConnectionState(data.state);
       if (data.state === 'open') {
-         setQrCodeData('');
+        setQrCodeData('');
       }
     } catch (err) {
-       console.error('Status check error (keeping last state):', err);
-       // لا نغير الحالة عند فشل الاتصال - نحتفظ بآخر حالة معروفة
+      console.error('Status check error (keeping last state):', err);
+      // لا نغير الحالة عند فشل الاتصال - نحتفظ بآخر حالة معروفة
     }
   }, []);
 
@@ -426,13 +426,13 @@ const WhatsAppConnection = () => {
 
   const filteredDocs = apiSearch
     ? API_DOCS.map(section => ({
-        ...section,
-        endpoints: section.endpoints.filter(ep =>
-          ep.path.toLowerCase().includes(apiSearch.toLowerCase()) ||
-          ep.desc.includes(apiSearch) ||
-          ep.method.toLowerCase().includes(apiSearch.toLowerCase())
-        )
-      })).filter(section => section.endpoints.length > 0)
+      ...section,
+      endpoints: section.endpoints.filter(ep =>
+        ep.path.toLowerCase().includes(apiSearch.toLowerCase()) ||
+        ep.desc.includes(apiSearch) ||
+        ep.method.toLowerCase().includes(apiSearch.toLowerCase())
+      )
+    })).filter(section => section.endpoints.length > 0)
     : API_DOCS;
 
   // ==================== RENDER ====================
@@ -443,7 +443,7 @@ const WhatsAppConnection = () => {
           <Smartphone size={28} className="text-primary" />
         </div>
         <div>
-          <h1 className="page-title">ربط الواتساب (EvolutionAPI)</h1>
+          <h1 className="page-title">ربط الواتساب</h1>
           <p className="page-subtitle">إدارة اتصال الواتساب، إعداد الإشعارات التلقائية، وتوثيق API.</p>
         </div>
       </div>
@@ -490,7 +490,7 @@ const WhatsAppConnection = () => {
                   dir="ltr"
                 />
               </div>
-              
+
               <div className="form-group">
                 <label>Global API Key</label>
                 <input
@@ -536,8 +536,8 @@ const WhatsAppConnection = () => {
 
               {webhookInfo?.configured && (
                 <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px', fontSize: '13px', color: '#15803d' }}>
-                  ✅ Webhook مسجّل بالفعل في Evolution API
-                  {webhookInfo?.evolutionData?.url && <span className="en-font" style={{ marginRight: '4px' }}> — {webhookInfo.evolutionData.url}</span>}
+                  ✅ Webhook مسجّل بالفعل
+
                 </div>
               )}
 
@@ -558,26 +558,26 @@ const WhatsAppConnection = () => {
                   disabled={webhookLoading}
                   style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                 >
-                  {webhookLoading ? <RefreshCw className="spin" size={16}/> : <span>🔗</span>}
+                  {webhookLoading ? <RefreshCw className="spin" size={16} /> : <span>🔗</span>}
                   <span>تسجيل</span>
                 </button>
               </div>
               <p className="text-sm text-muted" style={{ marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
-                📌 المسار الصحيح هو: <code className="en-font" style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>https://[عنوان-سيرفرك]/api/evolution/webhook</code>
+
               </p>
             </div>
           </div>
 
           <div className="status-card paper-card">
             <h2 className="card-title">حالة الربط</h2>
-            
+
             <div className="status-indicator">
               <div className={`status-badge ${connectionState}`}>
                 <span className="status-dot"></span>
                 <span className="status-text">
-                  {connectionState === 'open' ? 'متصل بالواتساب' : 
-                   connectionState === 'connecting' ? 'جاري الاتصال...' : 
-                   connectionState === 'qr_pending' ? 'بانتظار المسح' : 'غير متصل'}
+                  {connectionState === 'open' ? 'متصل بالواتساب' :
+                    connectionState === 'connecting' ? 'جاري الاتصال...' :
+                      connectionState === 'qr_pending' ? 'بانتظار المسح' : 'غير متصل'}
                 </span>
               </div>
             </div>
@@ -588,8 +588,8 @@ const WhatsAppConnection = () => {
                   <CheckCircle2 size={64} className="text-success" />
                   <p>تم الربط بنجاح! الواتساب يعمل تلقائيًا.</p>
                   <button onClick={handleLogout} className="btn btn-danger mt-4" disabled={loading}>
-                     {loading ? <RefreshCw className="spin" size={20} /> : <LogOut size={20} />}
-                     <span>تسجيل الخروج وقطع الربط</span>
+                    {loading ? <RefreshCw className="spin" size={20} /> : <LogOut size={20} />}
+                    <span>تسجيل الخروج وقطع الربط</span>
                   </button>
                 </div>
               ) : (
@@ -605,13 +605,13 @@ const WhatsAppConnection = () => {
                       <p className="mt-2">لا يوجد رمز QR نشط</p>
                     </div>
                   )}
-                  
+
                   <div className="action-buttons mt-6">
                     <button onClick={handleGenerateQR} className="btn btn-primary" disabled={loading}>
                       {loading ? <RefreshCw className="spin" size={20} /> : <RefreshCw size={20} />}
                       <span>{qrCodeData ? 'تحديث رمز QR' : 'توليد رمز QR'}</span>
                     </button>
-                  <button onClick={checkStatus} className="btn btn-secondary" disabled={loading}>
+                    <button onClick={checkStatus} className="btn btn-secondary" disabled={loading}>
                       <RefreshCw size={20} className={loading && !qrCodeData ? "spin" : ""} />
                       <span>تحديث الحالة</span>
                     </button>
@@ -624,15 +624,7 @@ const WhatsAppConnection = () => {
               <div className="optimize-section mt-6 p-4 paper-card" style={{ border: '1px solid #25d366', background: 'rgba(37, 211, 102, 0.05)', borderRadius: '12px' }}>
                 <div className="flex items-center gap-3 mb-3" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <CheckCircle2 style={{ color: '#25d366' }} size={24} />
-                  <h3 className="font-bold text-lg" style={{ margin: 0 }}>تحسين استقرار الاتصال</h3>
                 </div>
-                <p className="text-sm text-muted mb-4">
-                  في حال كنت تواجه انقطاعات متكررة، اضغط على الزر أدناه لتفعيل ميزة "Always Online" التي تضمن بقاء الجلسة نشطة ومستقرة دائماً.
-                </p>
-                <button onClick={handleOptimizeSession} className="btn w-full" style={{ background: '#25d366', color: '#fff', width: '100%', display: 'flex', justifyContent: 'center', gap: '8px' }} disabled={loading}>
-                   {loading ? <RefreshCw className="spin" size={20} /> : <Smartphone size={20} />}
-                   <span>تفعيل وضع الاتصال المستمر (Always Online)</span>
-                </button>
               </div>
             )}
           </div>
@@ -775,7 +767,7 @@ const WhatsAppConnection = () => {
                     <ChevronDown size={18} />
                   </span>
                 </div>
-                
+
                 {isOpen && (
                   <div className="api-section-body section-collapse">
                     {section.endpoints.map((ep, idx) => (
@@ -803,7 +795,7 @@ const WhatsAppConnection = () => {
                           </div>
                         </div>
                         <div className="api-desc">{ep.desc}</div>
-                        
+
                         {testOpen === ep.method + ep.path ? (
                           <div className="api-test-panel">
                             {(ep.method === 'POST' || ep.method === 'PUT') && (

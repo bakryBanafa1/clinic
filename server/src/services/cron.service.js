@@ -190,7 +190,7 @@ function startCronJobs() {
       const stateRes = await fetch(`${evolutionUrl}/instance/connectionState/${evolutionInstanceName}`, {
         headers: { 'apikey': evolutionApiKey }
       });
-      
+
       let stateData;
       const stateText = await stateRes.text();
       try {
@@ -201,15 +201,15 @@ function startCronJobs() {
 
       if (!stateRes.ok) {
         if (stateRes.status === 503) {
-           console.warn(`⏳ Watchdog: Evolution Server Busy (503). Skipping this check...`);
-           return;
+          console.warn(`⏳ Watchdog: Evolution Server Busy (503). Skipping this check...`);
+          return;
         }
         console.warn(`⚠️ Watchdog: Unexpected State Response (HTTP ${stateRes.status}).`);
       } else {
         const state = stateData?.instance?.state || stateData?.state;
-        
+
         console.log(`📡 Watchdog: Current WhatsApp state is [${state}]`);
-        
+
         if (state === 'open') {
           // الجلسة متصلة - نقوم بتنشيط الإعدادات الاستباقية وإرسال "Available" لإبقاء الجلسة حية وحقيقية
           await fetch(`${evolutionUrl}/settings/set/${evolutionInstanceName}`, {
@@ -228,7 +228,7 @@ function startCronJobs() {
             headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
             body: JSON.stringify({ presence: 'available' })
           });
-          
+
           return;
         }
       }
@@ -238,7 +238,7 @@ function startCronJobs() {
       const connectRes = await fetch(`${evolutionUrl}/instance/connect/${evolutionInstanceName}`, {
         headers: { 'apikey': evolutionApiKey }
       });
-      
+
       const connectData = await connectRes.json();
       console.log(`✅ Watchdog Result: ${JSON.stringify(connectData).substring(0, 100)}`);
 

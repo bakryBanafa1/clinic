@@ -82,15 +82,15 @@ const MainLayout = () => {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="logo-container">
-             <div className="logo-placeholder">⚕️</div>
-             <h2>نظام العيادة</h2>
+            <div className="logo-placeholder">⚕️</div>
+            <h2>نظام العيادة</h2>
           </div>
         </div>
-        
+
         <nav className="sidebar-nav">
           {navItems.map((item) => (
-            <Link 
-              key={item.path} 
+            <Link
+              key={item.path}
               to={item.path}
               className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
             >
@@ -112,60 +112,60 @@ const MainLayout = () => {
       <main className="main-content">
         {/* Header */}
         <header className="topbar">
-           <div className="topbar-search" style={{ position: 'relative' }}>
-              <Search size={18} className="text-muted" />
-              <input 
-                type="text" 
-                placeholder="بحث بالاسم، الجوال، رقم الملف..." 
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                onFocus={() => searchResults.length > 0 && setShowSearch(true)}
-                onBlur={() => setTimeout(() => setShowSearch(false), 200)}
-              />
-              {searchQuery && (
-                <button onClick={() => { setSearchQuery(''); setSearchResults([]); setShowSearch(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)' }}>
-                  <X size={16}/>
-                </button>
-              )}
-              
-              {/* Search Dropdown */}
-              {showSearch && searchResults.length > 0 && (
-                <div className="search-dropdown">
-                  {searchResults.map(p => (
-                    <div 
-                      key={p.id} 
-                      className="search-result-item"
-                      onMouseDown={() => { navigate(`/patients/${p.id}`); setShowSearch(false); setSearchQuery(''); }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="avatar" style={{ width: '32px', height: '32px', fontSize: '0.8rem' }}>{p.name.charAt(0)}</div>
-                        <div>
-                          <p className="font-bold text-sm">{p.name}</p>
-                          <p className="text-xs text-muted en-font">{p.fileNumber} {p.phone ? `• ${p.phone}` : ''}</p>
-                        </div>
+          <div className="topbar-search" style={{ position: 'relative' }}>
+            <Search size={18} className="text-muted" />
+            <input
+              type="text"
+              placeholder="بحث بالاسم، الجوال، رقم الملف..."
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              onFocus={() => searchResults.length > 0 && setShowSearch(true)}
+              onBlur={() => setTimeout(() => setShowSearch(false), 200)}
+            />
+            {searchQuery && (
+              <button onClick={() => { setSearchQuery(''); setSearchResults([]); setShowSearch(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)' }}>
+                <X size={16} />
+              </button>
+            )}
+
+            {/* Search Dropdown */}
+            {showSearch && searchResults.length > 0 && (
+              <div className="search-dropdown">
+                {searchResults.map(p => (
+                  <div
+                    key={p.id}
+                    className="search-result-item"
+                    onMouseDown={() => { navigate(`/patients/${p.id}`); setShowSearch(false); setSearchQuery(''); }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="avatar" style={{ width: '32px', height: '32px', fontSize: '0.8rem' }}>{p.name.charAt(0)}</div>
+                      <div>
+                        <p className="font-bold text-sm">{p.name}</p>
+                        <p className="text-xs text-muted en-font">{p.fileNumber} {p.phone ? `• ${p.phone}` : ''}</p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-           </div>
-            
-            <div className="flex items-center gap-4">
-              <button className="icon-btn relative bg-surface border border-color" onClick={toggleDarkMode} title="تبديل الوضع">
-                {isDark ? <Sun size={20} className="text-warning-500" /> : <Moon size={20} className="text-muted" />}
-              </button>
-              <button className="icon-btn relative bg-surface border border-color" onClick={() => navigate('/notifications')} style={{ position: 'relative' }}>
-                <Bell size={20} className="text-muted" />
-                {notifCount > 0 && <span className="notification-badge">{notifCount > 9 ? '9+' : notifCount}</span>}
-              </button>
-              <div className="user-profile">
-                <div className="avatar">{user.name.charAt(0)}</div>
-                <div className="user-info">
-                  <span className="user-name">{user.name}</span>
-                  <span className="user-role">{getRoleText(user.role)}</span>
-                </div>
+                  </div>
+                ))}
               </div>
-           </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button className="icon-btn relative bg-surface border border-color" onClick={toggleDarkMode} title="تبديل الوضع">
+              {isDark ? <Sun size={20} className="text-warning-500" /> : <Moon size={20} className="text-muted" />}
+            </button>
+            <button className="icon-btn relative bg-surface border border-color" onClick={() => navigate('/notifications')} style={{ position: 'relative' }}>
+              <Bell size={20} className="text-muted" />
+              {notifCount > 0 && <span className="notification-badge">{notifCount > 9 ? '9+' : notifCount}</span>}
+            </button>
+            <div className="user-profile">
+              <div className="avatar">{user.name.charAt(0)}</div>
+              <div className="user-info">
+                <span className="user-name">{user.name}</span>
+                <span className="user-role">{getRoleText(user.role)}</span>
+              </div>
+            </div>
+          </div>
         </header>
 
         {/* Page Content */}
