@@ -5,7 +5,22 @@ const { uploadLogo } = require('../middleware/upload');
 const path = require('path');
 const router = express.Router();
 
-// جلب إعدادات العيادة
+// جلب معلومات العيادة العامة (لصفحة تسجيل الدخول)
+router.get('/public-info', async (req, res) => {
+  try {
+    const settings = await prisma.clinicSettings.findFirst({
+      select: {
+        clinicName: true,
+        logo: true
+      }
+    });
+    res.json(settings || { clinicName: 'العيادة', logo: null });
+  } catch (err) {
+    res.status(500).json({ error: 'خطأ في الخادم' });
+  }
+});
+
+// جلب إعدادات العيادة الكاملة (يتطلب تسجيل دخول)
 router.get('/', authMiddleware, async (req, res) => {
   try {
     let settings = await prisma.clinicSettings.findFirst();

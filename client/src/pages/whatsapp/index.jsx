@@ -130,7 +130,6 @@ const NOTIFICATION_TYPES = [
   { key: 'bookingConfirm', emoji: '✅', title: 'تأكيد الحجز', hasDays: false },
   { key: 'bookingCancel', emoji: '❌', title: 'إلغاء الحجز', hasDays: false },
   { key: 'appointmentReminder', emoji: '📅', title: 'تذكير الموعد العادي', hasDays: true, daysLabel: 'أرسل التذكير قبل الموعد بـ' },
-  { key: 'birthdayGreeting', emoji: '🎂', title: 'تهنئة عيد الميلاد', hasDays: false },
   { key: 'postVisit', emoji: '🙏', title: 'شكر بعد الزيارة', hasDays: false },
 ];
 

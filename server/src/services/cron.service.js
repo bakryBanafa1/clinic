@@ -126,51 +126,6 @@ function startCronJobs() {
     }
   });
 
-  // ===== 3. تهنئة أعياد الميلاد - كل يوم الساعة 9 صباحاً =====
-  cron.schedule('0 9 * * *', async () => {
-    console.log('🎂 Running birthday greeting check...');
-    try {
-      const settings = await prisma.clinicSettings.findFirst();
-      if (!settings || !settings.birthdayGreetingEnabled) return;
-
-      const today = new Date();
-      const monthDay = `${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
-
-      // جلب جميع المرضى الذين لديهم تاريخ ميلاد
-      const patients = await prisma.patient.findMany({
-        where: {
-          dateOfBirth: { not: null },
-          phone: { not: null }
-        },
-        select: { id: true, name: true, phone: true, dateOfBirth: true, fileNumber: true }
-      });
-
-      for (const patient of patients) {
-        if (!patient.dateOfBirth) continue;
-        // مقارنة الشهر واليوم فقط (YYYY-MM-DD format)
-        const dobParts = patient.dateOfBirth.split('-');
-        if (dobParts.length >= 3) {
-          const dobMonthDay = `${dobParts[1]}-${dobParts[2]}`;
-          if (dobMonthDay === monthDay && settings.birthdayGreetingTemplate) {
-            const variables = {
-              'اسم_المريض': patient.name,
-              'اسم_الطبيب': '',
-              'تاريخ_الموعد': '',
-              'وقت_الموعد': '',
-              'اسم_العيادة': settings.clinicName || 'العيادة',
-              'رقم_الملف': patient.fileNumber || ''
-            };
-            const message = renderTemplate(settings.birthdayGreetingTemplate, variables);
-            await sendWhatsAppMessage(settings, patient.phone, message);
-            console.log(`🎂 Birthday greeting sent to: ${patient.name}`);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Birthday greeting cron job error:', err);
-    }
-  });
-
   // ===== 4. WhatsApp Connection Watchdog - كل 6 دقائق =====
   // يقوم بالتأكد من أن اتصال الواتساب نشط دائماً ويعيد الربط تلقائياً إذا انفصل
   cron.schedule('*/6 * * * *', async () => {
@@ -247,7 +202,7 @@ function startCronJobs() {
     }
   });
 
-  console.log('✅ Cron jobs started (follow-up reminders, appointment reminders, birthday greetings, WhatsApp Watchdog)');
+  console.log('✅ Cron jobs started (follow-up reminders, appointment reminders, WhatsApp Watchdog)');
 }
 
 module.exports = { startCronJobs };
