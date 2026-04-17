@@ -9,7 +9,7 @@ const ClinicSettings = () => {
     phone: '',
     address: '',
     taxRate: 15,
-    currency: 'SAR',
+    currency: 'YER',
     whatsappNumber: '',
     whatsappEnabled: false,
     queueExaminationRatio: 1,
@@ -166,7 +166,7 @@ const ClinicSettings = () => {
                </div>
                <div className="form-group">
                   <label>العملة الافتراضية</label>
-                  <input type="text" name="currency" value={settings.currency || ''} onChange={handleChange} placeholder="مثال: ر.س" />
+                  <input type="text" name="currency" value={settings.currency || ''} onChange={handleChange} placeholder="مثال: ر.ي" />
                </div>
             </div>
 

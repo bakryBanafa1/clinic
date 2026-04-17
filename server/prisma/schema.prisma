@@ -291,7 +291,7 @@ model ClinicSettings {
   defaultMorningCapacity Int     @default(20)
   defaultEveningCapacity Int     @default(20)
   appointmentDuration    Int     @default(15) // بالدقائق
-  currency               String  @default("ر.س")
+  currency               String  @default("ر.ي")
   taxRate                Float   @default(15)
   invoiceNotes           String?
   prescriptionNotes      String?
