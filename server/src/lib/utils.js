@@ -278,6 +278,7 @@ async function sendWhatsAppMessage(settings, phone, message, retries = 3, mediaU
     ? {
         number: cleanPhone,
         mediatype: "image",
+        mimetype: "image/jpeg", // Added for compatibility with strict Evolution API endpoints
         media: mediaUrl,
         caption: message || ''
       }
@@ -321,6 +322,12 @@ async function sendWhatsAppMessage(settings, phone, message, retries = 3, mediaU
       }
 
       console.error(`❌ Attempt ${i + 1} failed (HTTP ${response.status}):`, typeof data === 'object' ? JSON.stringify(data).substring(0, 150) : data);
+      
+      // 🔄 خطأ 4xx (خطأ في الطلب، مثال 400 Bad Request)
+      if (response.status >= 400 && response.status < 500 && response.status !== 404) {
+         console.log(`❌ Client Error (HTTP ${response.status}). NOT retrying to avoid hanging.`);
+         return { success: false, error: data.message || `Client error (${response.status})`, queued: false };
+      }
       
       // 🔄 خطأ 503 (خادم مشغول) مع backoff تصاعدي
       if (response.status === 503) {

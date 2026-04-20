@@ -18,6 +18,13 @@ const API_DOCS = [
       },
       { 
         method: 'GET', 
+        path: '/whatsapp-requests/save?phone=966500000000&message=مرحبا', 
+        desc: 'حجز طلب واتساب وتخزينه بقاعدة البيانات (لإرساله لاحقاً / مفيد للأنظمة الخارجية)', 
+        body: null,
+        isCustom: true
+      },
+      { 
+        method: 'GET', 
         path: '/whatsapp-requests/send?phone=966500000000&message=مرحبا', 
         desc: 'إرسال رسالة نصية عبر رابط مباشر (مثالي للردود الآلية والكاشير)', 
         body: null,
