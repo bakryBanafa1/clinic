@@ -57,8 +57,12 @@ router.get('/', authMiddleware, async (req, res) => {
     // ترتيب المنتظرين بالتبادل
     const sortedWaiting = interleaveQueue(waiting, examRatio, followupRatio);
 
+    // تحديث أرقام الدور لتكون تسلسلية للمنتظرين لتعكس ترتيب الدخول الفعلي
+    let highestInProgress = Math.max(0, ...others.map(o => o.queueNumber || 0));
+    const numberedWaiting = sortedWaiting.map((q, idx) => ({ ...q, displayQueueNumber: highestInProgress + idx + 1 }));
+
     // دمج الترتيب: المنتظرون المرتبون + البقية (in_progress, completed, skipped)
-    const finalQueue = [...sortedWaiting, ...others];
+    const finalQueue = [...numberedWaiting, ...others];
 
     res.json(finalQueue);
   } catch (err) {

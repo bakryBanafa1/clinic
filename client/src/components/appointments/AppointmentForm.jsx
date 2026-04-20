@@ -226,7 +226,7 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
   };
 
   const selectedDoctor = doctors.find(d => d.id === parseInt(formData.doctorId));
-  const fee = selectedDoctor?.consultationFee || 0;
+  const fee = formData.appointmentType === 'followup' ? 0 : (selectedDoctor?.consultationFee || 0);
   const minPayment = settings?.minPaymentAmount || 0;
   const paidAmt = parseFloat(formData.paidAmount || 0);
   const remaining = Math.max(0, fee - paidAmt);
@@ -275,7 +275,7 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
                 {showPatientResults && patientResults.length > 0 && (
                   <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
                     {patientResults.map(p => (
-                      <div key={p.id} onClick={() => selectPatient(p)} className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100">
+                      <div key={p.id} onMouseDown={() => selectPatient(p)} className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100">
                         {p.name} ({p.phone || p.fileNumber})
                       </div>
                     ))}
@@ -366,7 +366,7 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
           {capacityInfo.message ? <span>{capacityInfo.message}</span> :
             capacityInfo.available > 0
               ? <span>متاح: <b className="en-font">{capacityInfo.available}</b> من أصل <b className="en-font">{capacityInfo.capacity}</b></span>
-              : <span>عذراً، هذه الفترة ممتلئة.</span>
+              : <span>هذه الفترة ممتلئة (سيقوم النظام بترحيل وتحديد أقرب يوم متاح تلقائياً)</span>
           }
         </div>
       )}
@@ -378,7 +378,7 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', alignItems: 'end' }}>
             <div className="form-group mb-0">
               <label>إجمالي الكشفية</label>
-              <div className="font-bold text-lg en-font">{fee} {settings?.currency || 'ر.س'}</div>
+              <div className="font-bold text-lg en-font">{fee} {settings?.currency || window.clinicCurrency || 'ر.ي'}</div>
             </div>
             <div className="form-group mb-0">
               <label>المبلغ المدفوع الآن <span className="text-danger">*</span></label>
@@ -386,10 +386,10 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
             </div>
             <div className="form-group mb-0">
               <label>المتبقي للدفع</label>
-              <div className={`font-bold text-lg en-font ${remaining > 0 ? 'text-danger' : 'text-success'}`}>{remaining} {settings?.currency || 'ر.س'}</div>
+              <div className={`font-bold text-lg en-font ${remaining > 0 ? 'text-danger' : 'text-success'}`}>{remaining} {settings?.currency || window.clinicCurrency || 'ر.ي'}</div>
             </div>
           </div>
-          {minPayment > 0 && <p className="text-sm mt-3 text-warning-700">★ الحد الأدنى للتسديد لتأكيد الحجز هو: {minPayment} {settings?.currency || 'ر.س'}</p>}
+          {minPayment > 0 && <p className="text-sm mt-3 text-warning-700">★ الحد الأدنى للتسديد لتأكيد الحجز هو: {minPayment} {settings?.currency || window.clinicCurrency || 'ر.ي'}</p>}
         </div>
       )}
 
@@ -401,7 +401,7 @@ const AppointmentForm = ({ appointment, onClose, onSave, defaultPatientId, defau
 
       <div className="modal-footer" style={{ marginTop: '1rem', marginLeft: '-1.5rem', marginRight: '-1.5rem', marginBottom: '-1.5rem' }}>
         <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>إلغاء</button>
-        <button type="submit" className="btn-primary" disabled={loading || (!isEditMode && capacityInfo && capacityInfo.available <= 0)}>
+        <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? 'جاري الحفظ...' : isEditMode ? '💾 حفظ التعديلات' : 'حفظ المريض وتأكيد الحجز'}
         </button>
       </div>

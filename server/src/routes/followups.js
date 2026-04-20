@@ -7,7 +7,7 @@ const router = express.Router();
 // جلب مواعيد العودة مع فلاتر
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { status, doctorId, date, from, to, page = 1, limit = 20 } = req.query;
+    const { status, doctorId, date, from, to, search, page = 1, limit = 20 } = req.query;
     const where = {};
     if (status) where.status = status;
     if (doctorId) where.doctorId = parseInt(doctorId);
@@ -16,6 +16,9 @@ router.get('/', authMiddleware, async (req, res) => {
       where.scheduledDate = {};
       if (from) where.scheduledDate.gte = from;
       if (to) where.scheduledDate.lte = to;
+    }
+    if (search) {
+      where.patient = { name: { contains: search } };
     }
 
     const [followUps, total] = await Promise.all([

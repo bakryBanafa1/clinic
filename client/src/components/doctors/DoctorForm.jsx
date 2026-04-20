@@ -146,7 +146,7 @@ const DoctorForm = ({ doctor, onClose, onSave }) => {
         </div>
 
         <div className="form-group">
-          <label>رسوم الكشفية (ر.س)</label>
+          <label>رسوم الكشفية (العملة المحلية)</label>
           <input type="number" name="consultationFee" value={formData.consultationFee} onChange={handleChange} dir="ltr" style={{ textAlign: 'right' }} min="0" step="0.01" />
         </div>
       </div>

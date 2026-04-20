@@ -1,23 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarClock, CheckCircle, MessageCircle, AlertCircle, Filter } from 'lucide-react';
+import { CalendarClock, CheckCircle, MessageCircle, AlertCircle, Filter, Search } from 'lucide-react';
 import api from '../../utils/api';
 import { formatDate, getStatusText, getStatusColor } from '../../utils/helpers';
 
 const FollowUpPage = () => {
   const [followUps, setFollowUps] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('');
   const [stats, setStats] = useState({ today: 0, overdue: 0, pending: 0 });
+  const [statusFilter, setStatusFilter] = useState('');
+  const [searchName, setSearchName] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     fetchFollowUps();
     fetchStats();
-  }, [statusFilter]);
+  }, [statusFilter, startDate, endDate]);
 
   const fetchFollowUps = async () => {
     try {
       setLoading(true);
-      const query = statusFilter ? `?status=${statusFilter}` : '';
+      let query = `?status=${statusFilter}`;
+      if (searchName) query += `&search=${searchName}`;
+      if (startDate) query += `&from=${startDate}`;
+      if (endDate) query += `&to=${endDate}`;
+      
       const data = await api.get(`/followups${query}`);
       setFollowUps(data.followUps || []);
     } catch (err) {
@@ -103,16 +110,42 @@ const FollowUpPage = () => {
       </div>
 
       <div className="bg-surface rounded-xl border border-color shadow-sm mb-6 overflow-hidden">
-        <div className="p-4 flex gap-4 items-center bg-gray-50 border-b border-color">
-           <div className="flex items-center gap-2 font-bold mr-2"><Filter size={18}/> فلترة:</div>
-           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="form-select" style={{ width: 'auto' }}>
-             <option value="">الكل</option>
-             <option value="pending">معلق</option>
-             <option value="reminded">تم التذكير</option>
-             <option value="completed">مكتمل</option>
-             <option value="missed">فائت</option>
-           </select>
-        </div>
+         <div className="p-4 flex gap-4 items-center bg-gray-50 border-b border-color flex-wrap">
+            <div className="flex items-center gap-2 font-bold mr-2"><Filter size={18}/> فلترة وبحث:</div>
+            
+            <input 
+              type="text" 
+              placeholder="ابحث باسم المريض..." 
+              value={searchName} 
+              onChange={(e) => setSearchName(e.target.value)} 
+              onBlur={fetchFollowUps}
+              onKeyDown={(e) => e.key === 'Enter' && fetchFollowUps()}
+              className="form-control" 
+              style={{ width: '200px' }} 
+            />
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm">من:</span>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="form-control" style={{ width: '130px' }}/>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm">إلى:</span>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="form-control" style={{ width: '130px' }}/>
+            </div>
+
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="form-select" style={{ width: 'auto' }}>
+              <option value="">كل الحالات</option>
+              <option value="pending">معلق</option>
+              <option value="reminded">تم التذكير</option>
+              <option value="completed">مكتمل</option>
+              <option value="missed">فائت</option>
+            </select>
+            
+            <button className="btn-primary flex items-center gap-2" onClick={fetchFollowUps}>
+              <Search size={16}/> بحث
+            </button>
+         </div>
 
         <div className="table-container">
           <table className="data-table">

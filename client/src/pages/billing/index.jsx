@@ -80,7 +80,7 @@ const BillingPage = () => {
     (inv.invoiceNumber || '').includes(search)
   );
 
-  const currency = settings?.currency || 'ر.س';
+  const currency = settings?.currency || window.clinicCurrency || 'ر.ي';
 
   return (
     <div className="animate-fade-in pb-8">
@@ -109,6 +109,7 @@ const BillingPage = () => {
             <thead>
               <tr style={{ background: 'linear-gradient(to bottom, #3b82f6, #2563eb)', height: '45px' }}>
                 <th style={{ padding: '12px', textAlign: 'right', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600' }}>رقم الفاتورة</th>
+                <th style={{ padding: '12px', textAlign: 'right', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600' }}>اسم المريض</th>
                 <th style={{ padding: '12px', textAlign: 'center', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600', width: '90px' }}>التاريخ</th>
                 
                 <th style={{ padding: '12px', textAlign: 'right', color: 'white', borderBottom: '3px solid #1d4ed8', fontWeight: '600', width: '100px' }}>المبلغ الفرعي</th>
@@ -128,6 +129,7 @@ const BillingPage = () => {
                 filteredInvoices.map((inv, idx) => (
                   <tr key={inv.id} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f8fafc', height: '40px', transition: 'background-color 0.2s' }}>
                     <td style={{ padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #e2e8f0' }}><b style={{ color: '#2563eb', fontSize: '14px' }}>{inv.invoiceNumber}</b></td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 'bold' }}>{inv.patient?.name || 'غير معروف'}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>{formatDate(inv.date)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #e2e8f0', fontFamily: 'monospace' }}>{Number(inv.subtotal).toFixed(2)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #e2e8f0', color: inv.discount > 0 ? '#dc2626' : '#94a3b8' }}>{inv.discount || '-'}</td>
@@ -179,18 +181,18 @@ const BillingPage = () => {
                         <th style={{ padding: '0.5rem', textAlign: 'right' }}>#</th>
                         <th style={{ padding: '0.5rem', textAlign: 'right' }}>البيان</th>
                         <th style={{ padding: '0.5rem', textAlign: 'center' }}>الكمية</th>
-                        <th style={{ padding: '0.5rem', textAlign: 'left' }}>سعر الوحدة</th>
-                        <th style={{ padding: '0.5rem', textAlign: 'left' }}>المبلغ</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'center' }}>سعر الوحدة</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'center' }}>المبلغ</th>
                      </tr>
                    </thead>
                    <tbody>
                      {parseItems(selectedInvoice.items).map((item, idx) => (
                        <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                          <td style={{ padding: '0.5rem' }} className="en-font">{idx + 1}</td>
-                          <td style={{ padding: '0.5rem' }}>{item.description}</td>
+                          <td style={{ padding: '0.5rem', textAlign: 'right' }} className="en-font">{idx + 1}</td>
+                          <td style={{ padding: '0.5rem', textAlign: 'right' }}>{item.description}</td>
                           <td style={{ padding: '0.5rem', textAlign: 'center' }} className="en-font">{item.quantity}</td>
-                          <td style={{ padding: '0.5rem', textAlign: 'left' }} className="en-font">{item.unitPrice} {currency}</td>
-                          <td style={{ padding: '0.5rem', textAlign: 'left' }} className="en-font">{item.total || (item.quantity * item.unitPrice)} {currency}</td>
+                          <td style={{ padding: '0.5rem', textAlign: 'center' }} className="en-font">{item.unitPrice} {currency}</td>
+                          <td style={{ padding: '0.5rem', textAlign: 'center' }} className="en-font">{item.total || (item.quantity * item.unitPrice)} {currency}</td>
                        </tr>
                      ))}
                    </tbody>

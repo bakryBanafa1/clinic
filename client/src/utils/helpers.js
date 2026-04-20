@@ -20,11 +20,12 @@ export const formatDateTime = (dateStr) => {
   }
 };
 
-export const formatCurrency = (amount) => {
+export const formatCurrency = (amount, currencyStr) => {
   if (amount === null || amount === undefined) return '0';
   const num = parseFloat(amount);
   if (isNaN(num)) return '0';
-  return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' ر.س';
+  const curr = currencyStr || window.clinicCurrency || 'ر.ي';
+  return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' ' + curr;
 };
 
 export const getStatusText = (status) => {

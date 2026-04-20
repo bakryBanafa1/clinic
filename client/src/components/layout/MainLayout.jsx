@@ -20,9 +20,21 @@ const MainLayout = () => {
 
   useEffect(() => {
     fetchNotifCount();
+    fetchSettings();
     const interval = setInterval(fetchNotifCount, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const data = await api.get('/settings');
+      if (data && data.currency) {
+        window.clinicCurrency = data.currency;
+      }
+    } catch (err) {
+      // Silently fail
+    }
+  };
 
   const fetchNotifCount = async () => {
     try {

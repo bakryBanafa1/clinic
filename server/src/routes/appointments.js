@@ -80,27 +80,47 @@ router.post('/', authMiddleware, async (req, res) => {
 
     const paidAmt = parseFloat(paidAmount) || 0;
 
-    // التحقق من الطاقة الاستيعابية
-    const dayOfWeek = new Date(date).getDay();
-    const schedule = await prisma.doctorSchedule.findFirst({
-      where: { doctorId: parseInt(doctorId), dayOfWeek, isActive: true }
-    });
+    // البحث التلقائي عن أقرب يوم متاح (الترحيل التلقائي)
+    let finalDate = new Date(date);
+    let isAvailable = false;
+    let actualSchedule = null;
+    let attempts = 0;
+    const maxAttempts = 30; // الحد الأقصى للبحث (30 يوم)
+    let finalExistingAppts = 0;
+    
+    while (!isAvailable && attempts < maxAttempts) {
+      const dayOfWeek = finalDate.getDay();
+      actualSchedule = await prisma.doctorSchedule.findFirst({
+        where: { doctorId: parseInt(doctorId), dayOfWeek, isActive: true }
+      });
 
-    if (!schedule) return res.status(400).json({ error: 'الطبيب لا يعمل في هذا اليوم' });
+      if (actualSchedule) {
+        const existingAppts = await prisma.appointment.count({
+          where: {
+            doctorId: parseInt(doctorId),
+            date: finalDate.toISOString().split('T')[0],
+            period: period || 'morning',
+            status: { not: 'cancelled' }
+          }
+        });
 
-    const existingAppts = await prisma.appointment.count({
-      where: {
-        doctorId: parseInt(doctorId),
-        date,
-        period: period || 'morning',
-        status: { not: 'cancelled' }
+        const capacity = (period || 'morning') === 'morning' ? actualSchedule.morningCapacity : actualSchedule.eveningCapacity;
+        if (capacity > 0 && existingAppts < capacity) {
+          isAvailable = true;
+          finalExistingAppts = existingAppts;
+          break;
+        }
       }
-    });
-
-    const capacity = (period || 'morning') === 'morning' ? schedule.morningCapacity : schedule.eveningCapacity;
-    if (existingAppts >= capacity) {
-      return res.status(400).json({ error: 'الفترة ممتلئة - لا يمكن الحجز' });
+      // الانتقال لليوم التالي
+      finalDate.setDate(finalDate.getDate() + 1);
+      attempts++;
     }
+
+    if (!isAvailable) {
+      return res.status(400).json({ error: 'عذراً، لا توجد مواعيد متاحة خلال الـ 30 يوماً القادمة.' });
+    }
+
+    const assignedDate = finalDate.toISOString().split('T')[0];
 
     // التحقق من صلاحية الدفع
     const settings = await prisma.clinicSettings.findFirst() || {};
@@ -109,7 +129,7 @@ router.post('/', authMiddleware, async (req, res) => {
     const doctorObj = await prisma.doctor.findUnique({ where: { id: parseInt(doctorId) } });
     if (!doctorObj) return res.status(404).json({ error: 'الطبيب غير موجود' });
     
-    const totalAmount = doctorObj.consultationFee || 0;
+    const totalAmount = appointmentType === 'followup' ? 0 : (doctorObj.consultationFee || 0);
     
     // منع الحجز إذا كان المبلغ أقل من الحد الأدنى المقبول
     const requiredMinimum = Math.min(minPayment, totalAmount);
@@ -120,7 +140,10 @@ router.post('/', authMiddleware, async (req, res) => {
     let paymentStatus = 'unpaid';
     let apptStatus = 'pending';
     
-    if (paidAmt > 0) {
+    if (totalAmount === 0) {
+      paymentStatus = 'paid';
+      apptStatus = 'checked_in';
+    } else if (paidAmt > 0) {
       if (paidAmt >= totalAmount) {
         paymentStatus = 'paid';
         apptStatus = 'checked_in'; // تم الدفع بالكامل: تسجيل وصول مباشر
@@ -136,14 +159,14 @@ router.post('/', authMiddleware, async (req, res) => {
         data: {
           patientId: parseInt(patientId),
           doctorId: parseInt(doctorId),
-          date,
+          date: assignedDate,
           startTime,
           endTime,
           period: period || 'morning',
           appointmentType: appointmentType || 'examination',
           notes,
           status: apptStatus,
-          queueNumber: existingAppts + 1,
+          queueNumber: finalExistingAppts + 1,
           totalAmount,
           paidAmount: paidAmt,
           paymentStatus
@@ -162,7 +185,7 @@ router.post('/', authMiddleware, async (req, res) => {
           patientId: parseInt(patientId),
           appointmentId: appt.id,
           date: new Date(),
-          items: JSON.stringify([{ description: 'كشفية طبيب', quantity: 1, unitPrice: totalAmount, total: totalAmount }]),
+          items: JSON.stringify([{ description: appointmentType === 'followup' ? 'رسوم مراجعة' : 'كشفية طبيب', quantity: 1, unitPrice: totalAmount, total: totalAmount }]),
           subtotal: totalAmount,
           tax: 0,
           total: totalAmount,
@@ -259,7 +282,10 @@ router.put('/:id', authMiddleware, async (req, res) => {
 
     // إذا تغيّر الطبيب نحدث رسوم الكشفية
     let newTotalAmount = oldAppt.totalAmount;
-    if (doctorChanged) {
+    const newApptType = appointmentType || oldAppt.appointmentType;
+    if (newApptType === 'followup') {
+      newTotalAmount = 0;
+    } else if (doctorChanged || oldAppt.appointmentType === 'followup') {
       const newDoctor = await prisma.doctor.findUnique({ where: { id: newDoctorId } });
       if (newDoctor) newTotalAmount = newDoctor.consultationFee || 0;
     }
@@ -305,14 +331,14 @@ router.put('/:id', authMiddleware, async (req, res) => {
                     paidAmount: 0
                 }
             });
-        } else if (doctorChanged) {
-            // تحديث مبلغ الفاتورة وتفاصيلها إذا تغير الطبيب
+        } else if (doctorChanged || appointmentType) {
+            // تحديث مبلغ الفاتورة وتفاصيلها إذا تغير الطبيب أو نوع الحجز
             await prisma.invoice.update({
                 where: { id: invoice.id },
                 data: {
                     total: newTotalAmount,
                     subtotal: newTotalAmount,
-                    items: JSON.stringify([{ description: 'كشفية طبيب', quantity: 1, unitPrice: newTotalAmount, total: newTotalAmount }])
+                    items: JSON.stringify([{ description: newApptType === 'followup' ? 'رسوم مراجعة' : 'كشفية طبيب', quantity: 1, unitPrice: newTotalAmount, total: newTotalAmount }])
                 }
             });
         }
