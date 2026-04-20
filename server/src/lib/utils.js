@@ -57,10 +57,190 @@ function renderTemplate(template, variables = {}) {
   return result;
 }
 
+// =====================================================================
+// Circuit Breaker لحماية النظام من الطلبات المتكررة عند تعطل Evolution API
+// =====================================================================
+const circuitBreaker = {
+  failures: 0,
+  lastFailure: 0,
+  isOpen: false,
+  threshold: 3,          // عدد الفشل المتتالي قبل فتح الدائرة
+  resetTimeout: 60000,   // مدة الانتظار قبل إعادة المحاولة (60 ثانية)
+
+  recordFailure() {
+    this.failures++;
+    this.lastFailure = Date.now();
+    if (this.failures >= this.threshold) {
+      this.isOpen = true;
+      console.warn(`🔴 Circuit Breaker OPEN: Evolution API down. Pausing requests for ${this.resetTimeout / 1000}s`);
+    }
+  },
+
+  recordSuccess() {
+    if (this.failures > 0) {
+      console.log('🟢 Circuit Breaker RESET: Evolution API is back online');
+    }
+    this.failures = 0;
+    this.isOpen = false;
+    this.lastFailure = 0;
+  },
+
+  canProceed() {
+    if (!this.isOpen) return true;
+    // تحقق هل مضت مدة كافية لإعادة المحاولة
+    if (Date.now() - this.lastFailure > this.resetTimeout) {
+      console.log('🟡 Circuit Breaker HALF-OPEN: Testing Evolution API...');
+      return true; // السماح بمحاولة واحدة للاختبار
+    }
+    return false;
+  },
+
+  getStatus() {
+    return {
+      isOpen: this.isOpen,
+      failures: this.failures,
+      timeSinceLastFailure: this.lastFailure ? Date.now() - this.lastFailure : null
+    };
+  }
+};
+
+/**
+ * تنظيف وتوحيد رقم الهاتف
+ * يدعم الأرقام اليمنية (967) والسعودية (966) وغيرها
+ */
+function cleanPhoneNumber(phone) {
+  if (!phone) return null;
+  let cleaned = phone.replace(/[\s\-\(\)\+]/g, '');
+
+  // إزالة @s.whatsapp.net أو @c.us إن وجدت
+  cleaned = cleaned.replace(/@(s\.whatsapp\.net|c\.us)$/i, '');
+
+  // إذا بدأ بـ 00 نزيلها ونأخذ الرقم الدولي
+  if (cleaned.startsWith('00')) {
+    cleaned = cleaned.substring(2);
+  }
+
+  // إذا بدأ بـ 0 ولم يكن فيه كود دولة (أقل من 12 رقم) → افتراضي 967 (اليمن)
+  if (cleaned.startsWith('0') && cleaned.length <= 10) {
+    cleaned = '967' + cleaned.substring(1);
+  }
+
+  // إذا كان الرقم قصير جداً ولا يحتوي كود دولة
+  if (cleaned.length <= 9 && !cleaned.startsWith('966') && !cleaned.startsWith('967')) {
+    cleaned = '967' + cleaned;
+  }
+
+  return cleaned;
+}
+
+/**
+ * Fetch with timeout - لمنع التعليق عند عدم رد السيرفر
+ */
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    return response;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * طابور الرسائل الفاشلة لإعادة إرسالها لاحقاً
+ */
+const messageQueue = {
+  _queue: [],
+  _processing: false,
+  _retryTimer: null,
+
+  add(settings, phone, message) {
+    // تجنب التكرار
+    const exists = this._queue.some(m => m.phone === phone && m.message === message);
+    if (exists) return;
+
+    this._queue.push({ settings, phone, message, addedAt: Date.now(), retries: 0 });
+    console.log(`📥 Message queued for later delivery to: ${phone} (Queue size: ${this._queue.length})`);
+
+    // بدء المعالجة إذا لم تكن تعمل
+    this._scheduleRetry();
+  },
+
+  _scheduleRetry() {
+    if (this._retryTimer) return;
+    // إعادة المحاولة بعد 90 ثانية
+    this._retryTimer = setTimeout(() => {
+      this._retryTimer = null;
+      this._processQueue();
+    }, 90000);
+  },
+
+  async _processQueue() {
+    if (this._processing || this._queue.length === 0) return;
+    if (!circuitBreaker.canProceed()) {
+      console.log(`⏸️ Queue processing delayed: Circuit breaker is open`);
+      this._scheduleRetry();
+      return;
+    }
+
+    this._processing = true;
+    console.log(`📤 Processing message queue (${this._queue.length} messages)...`);
+
+    const toProcess = [...this._queue];
+    this._queue = [];
+
+    for (const item of toProcess) {
+      // تجاهل الرسائل القديمة جداً (أكثر من ساعة)
+      if (Date.now() - item.addedAt > 3600000) {
+        console.log(`🗑️ Discarding expired queued message to: ${item.phone}`);
+        continue;
+      }
+
+      try {
+        const result = await sendWhatsAppMessage(item.settings, item.phone, item.message, 2);
+        if (result && result.success) {
+          console.log(`✅ Queued message delivered to: ${item.phone}`);
+        } else {
+          item.retries++;
+          if (item.retries < 3) {
+            this._queue.push(item);
+          } else {
+            console.log(`❌ Giving up on queued message to: ${item.phone} after ${item.retries} retries`);
+          }
+        }
+      } catch (err) {
+        item.retries++;
+        if (item.retries < 3) {
+          this._queue.push(item);
+        }
+      }
+
+      // تأخير بين الرسائل لمنع الإغراق
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    this._processing = false;
+
+    if (this._queue.length > 0) {
+      this._scheduleRetry();
+    }
+  },
+
+  getQueueSize() {
+    return this._queue.length;
+  }
+};
+
 /**
  * إرسال رسالة واتساب عبر Evolution API مع محاولة إعادة المحاولة في حال فشل الاتصال المؤقت
+ * محسّن بـ: Circuit Breaker, Timeout, Exponential Backoff, Message Queue, Media Support
  */
-async function sendWhatsAppMessage(settings, phone, message, retries = 3) {
+async function sendWhatsAppMessage(settings, phone, message, retries = 3, mediaUrl = null) {
   if (!settings || !settings.evolutionApiUrl || !settings.evolutionApiKey || !settings.evolutionInstanceName) {
     console.log('⚠️ Evolution API settings not configured, skipping WhatsApp message');
     return null;
@@ -70,36 +250,58 @@ async function sendWhatsAppMessage(settings, phone, message, retries = 3) {
     return null;
   }
 
-  // تنظيف رقم الجوال
-  let cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
-  if (cleanPhone.startsWith('0')) {
-    cleanPhone = '966' + cleanPhone.substring(1); // افتراضي السعودية
+  // فحص الـ Circuit Breaker
+  if (!circuitBreaker.canProceed()) {
+    console.log(`⏸️ Circuit Breaker is OPEN. Queuing message to: ${phone}`);
+    messageQueue.add(settings, phone, message); // Currently mediaUrl is not queued to keep it simple
+    return { success: false, error: 'Circuit breaker open', queued: true };
   }
-  if (!cleanPhone.includes('@')) {
-    cleanPhone = cleanPhone + '@s.whatsapp.net';
+
+  // تنظيف رقم الجوال بشكل موحد
+  let cleanPhone = cleanPhoneNumber(phone);
+  if (!cleanPhone) {
+    console.log('⚠️ Invalid phone number, skipping WhatsApp message');
+    return null;
   }
 
   let evolutionUrl = settings.evolutionApiUrl;
   if (!evolutionUrl.startsWith('http')) {
     evolutionUrl = 'https://' + evolutionUrl;
   }
+  evolutionUrl = evolutionUrl.replace(/\/$/, '');
+  
+  const endpoint = mediaUrl 
+    ? `${evolutionUrl}/message/sendMedia/${settings.evolutionInstanceName}`
+    : `${evolutionUrl}/message/sendText/${settings.evolutionInstanceName}`;
+    
+  const payload = mediaUrl 
+    ? {
+        number: cleanPhone,
+        mediatype: "image",
+        media: mediaUrl,
+        caption: message || ''
+      }
+    : {
+        number: cleanPhone,
+        text: message || ''
+      };
 
   for (let i = 0; i < retries; i++) {
     try {
-      const response = await fetch(`${evolutionUrl}/message/sendText/${settings.evolutionInstanceName}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': settings.evolutionApiKey
+      const response = await fetchWithTimeout(
+        endpoint,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': settings.evolutionApiKey
+          },
+          body: JSON.stringify(payload)
         },
-        body: JSON.stringify({
-          number: cleanPhone,
-          text: message
-        })
-      });
+        20000 // 20 ثانية timeout
+      );
 
       // محاولة قراءة الرد بشكل آمن لمنع الانهيار عند استلام نص (Non-JSON)
-      const contentType = response.headers.get('content-type');
       let data;
       const responseText = await response.text();
       
@@ -107,47 +309,74 @@ async function sendWhatsAppMessage(settings, phone, message, retries = 3) {
         data = responseText ? JSON.parse(responseText) : {};
       } catch (e) {
         data = { message: responseText || 'Empty response' };
-        console.warn('⚠️ Received non-JSON response from Evolution API:', responseText.substring(0, 100));
+        if (responseText && !responseText.includes('<!DOCTYPE')) {
+          console.warn('⚠️ Received non-JSON response from Evolution API:', responseText.substring(0, 100));
+        }
       }
 
       if (response.ok) {
+        circuitBreaker.recordSuccess();
         console.log(`✅ WhatsApp message sent to: ${phone} (Attempt ${i + 1})`);
         return { success: true, data };
       }
 
-      console.error(`❌ Attempt ${i + 1} failed (HTTP ${response.status}):`, data);
+      console.error(`❌ Attempt ${i + 1} failed (HTTP ${response.status}):`, typeof data === 'object' ? JSON.stringify(data).substring(0, 150) : data);
       
-      // 🔄 ميزة الإصلاح الذاتي ومواجهة 503 (خادم مشغول)
-      if (response.status === 503 || (data.message && data.message.includes('server'))) {
-        const waitTime = (i + 1) * 5000; // 5s, 10s, 15s...
-        console.log(`⏳ External Server Busy (503). Retrying in ${waitTime/1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
+      // 🔄 خطأ 503 (خادم مشغول) مع backoff تصاعدي
+      if (response.status === 503) {
+        circuitBreaker.recordFailure();
+
+        if (i < retries - 1) {
+          // Exponential backoff مع jitter عشوائي
+          const baseWait = Math.min(5000 * Math.pow(2, i), 30000);
+          const jitter = Math.random() * 2000;
+          const waitTime = baseWait + jitter;
+          console.log(`⏳ Server Busy (503). Retrying in ${(waitTime/1000).toFixed(1)}s... (attempt ${i + 2}/${retries})`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
       }
 
+      // خطأ جلسة (منفصلة / غير موجودة)
       const errorMsg = (data.message || '').toLowerCase();
       const isSessionError = errorMsg.includes('closed') || errorMsg.includes('instancenotfound') || errorMsg.includes('disconnected') || response.status === 404;
       
       if (isSessionError && i < retries - 1) {
         console.log(`🔁 Session error detected. Triggering silent reconnect for [${settings.evolutionInstanceName}]...`);
-        fetch(`${evolutionUrl}/instance/connect/${settings.evolutionInstanceName}`, {
-           headers: { 'apikey': settings.evolutionApiKey }
-        }).catch(e => console.error('Silent reconnect trigger failed:', e.message));
+        fetchWithTimeout(
+          `${evolutionUrl}/instance/connect/${settings.evolutionInstanceName}`,
+          { headers: { 'apikey': settings.evolutionApiKey } },
+          10000
+        ).catch(e => console.error('Silent reconnect trigger failed:', e.message));
         
-        await new Promise(resolve => setTimeout(resolve, 4000));
+        await new Promise(resolve => setTimeout(resolve, 5000));
       } else if (i < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // خطأ عام → انتظار قبل المحاولة التالية
+        await new Promise(resolve => setTimeout(resolve, 3000 * (i + 1)));
       }
     } catch (err) {
-      console.error(`❌ Attempt ${i + 1} error:`, err.message);
+      // خطأ شبكة أو timeout
+      const isTimeout = err.name === 'AbortError';
+      console.error(`❌ Attempt ${i + 1} ${isTimeout ? 'TIMEOUT' : 'error'}:`, err.message);
+      
+      if (isTimeout || err.message.includes('fetch failed') || err.message.includes('ECONNREFUSED')) {
+        circuitBreaker.recordFailure();
+      }
+
       if (i < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, (i + 1) * 3000));
+        const waitTime = Math.min(3000 * Math.pow(2, i), 20000);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
       } else {
-        return { success: false, error: err.message };
+        // آخر محاولة فشلت → إضافة للطابور
+        messageQueue.add(settings, phone, message);
+        return { success: false, error: err.message, queued: true };
       }
     }
   }
-  return { success: false, error: 'Maximum retries reached' };
+
+  // كل المحاولات فشلت → إضافة للطابور
+  messageQueue.add(settings, phone, message);
+  return { success: false, error: 'Maximum retries reached', queued: true };
 }
 
 module.exports = {
@@ -160,5 +389,9 @@ module.exports = {
   isDateToday,
   isDatePast,
   renderTemplate,
-  sendWhatsAppMessage
+  sendWhatsAppMessage,
+  cleanPhoneNumber,
+  fetchWithTimeout,
+  circuitBreaker,
+  messageQueue
 };

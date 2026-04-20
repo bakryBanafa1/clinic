@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const prisma = require('../lib/prisma');
 const { emitNotification } = require('../socket');
-const { renderTemplate, sendWhatsAppMessage, calculateReminderDate } = require('../lib/utils');
+const { renderTemplate, sendWhatsAppMessage, calculateReminderDate, fetchWithTimeout, circuitBreaker, messageQueue } = require('../lib/utils');
 const { format, addDays, parseISO } = require('date-fns');
 
 function startCronJobs() {
@@ -126,25 +126,51 @@ function startCronJobs() {
     }
   });
 
-  // ===== 4. WhatsApp Connection Watchdog - كل 6 دقائق =====
-  // يقوم بالتأكد من أن اتصال الواتساب نشط دائماً ويعيد الربط تلقائياً إذا انفصل
-  cron.schedule('*/6 * * * *', async () => {
-    console.log('📡 Running WhatsApp Watchdog check...');
+  // ===== 3. WhatsApp Connection Watchdog - كل 3 دقائق =====
+  // يتحقق من حالة الاتصال ويعيد الربط تلقائياً مع Circuit Breaker
+  let watchdogConsecutiveFailures = 0;
+
+  cron.schedule('*/3 * * * *', async () => {
     try {
       const settings = await prisma.clinicSettings.findFirst();
       if (!settings || !settings.evolutionApiUrl || !settings.evolutionApiKey || !settings.evolutionInstanceName) {
-        console.log('ℹ️ WhatsApp Watchdog: No configuration found, skipping.');
-        return;
+        return; // لا تسجيلات إذا لم تكتمل الإعدادات
       }
 
       let evolutionUrl = settings.evolutionApiUrl;
       if (!evolutionUrl.startsWith('http')) evolutionUrl = 'https://' + evolutionUrl;
+      evolutionUrl = evolutionUrl.replace(/\/$/, '');
       const { evolutionApiKey, evolutionInstanceName } = settings;
 
+      // تحقق من circuit breaker — إذا كان مفتوحاً، تخطى بهدوء
+      if (!circuitBreaker.canProceed()) {
+        const status = circuitBreaker.getStatus();
+        const remainMs = circuitBreaker.resetTimeout - status.timeSinceLastFailure;
+        if (remainMs > 0) {
+          // لا نطبع شيء كل 3 دقائق — فقط كل دورة ثالثة (9 دقائق)
+          if (watchdogConsecutiveFailures % 3 === 0) {
+            console.log(`⏸️ Watchdog: Circuit breaker open. Next retry in ~${Math.ceil(remainMs/1000)}s`);
+          }
+          return;
+        }
+      }
+
       // 1. فحص حالة الاتصال الحالية
-      const stateRes = await fetch(`${evolutionUrl}/instance/connectionState/${evolutionInstanceName}`, {
-        headers: { 'apikey': evolutionApiKey }
-      });
+      let stateRes;
+      try {
+        stateRes = await fetchWithTimeout(
+          `${evolutionUrl}/instance/connectionState/${evolutionInstanceName}`,
+          { headers: { 'apikey': evolutionApiKey } },
+          12000
+        );
+      } catch (fetchErr) {
+        watchdogConsecutiveFailures++;
+        circuitBreaker.recordFailure();
+        if (watchdogConsecutiveFailures <= 1 || watchdogConsecutiveFailures % 5 === 0) {
+          console.warn(`⚠️ Watchdog: Cannot reach Evolution API (${fetchErr.name === 'AbortError' ? 'timeout' : fetchErr.message}). Failures: ${watchdogConsecutiveFailures}`);
+        }
+        return;
+      }
 
       let stateData;
       const stateText = await stateRes.text();
@@ -155,47 +181,79 @@ function startCronJobs() {
       }
 
       if (!stateRes.ok) {
+        watchdogConsecutiveFailures++;
         if (stateRes.status === 503) {
-          console.warn(`⏳ Watchdog: Evolution Server Busy (503). Skipping this check...`);
+          circuitBreaker.recordFailure();
+          if (watchdogConsecutiveFailures <= 1 || watchdogConsecutiveFailures % 5 === 0) {
+            console.warn(`⏳ Watchdog: Evolution Server Busy (503). Circuit breaker failures: ${circuitBreaker.failures}`);
+          }
           return;
         }
-        console.warn(`⚠️ Watchdog: Unexpected State Response (HTTP ${stateRes.status}).`);
-      } else {
-        const state = stateData?.instance?.state || stateData?.state;
-
-        console.log(`📡 Watchdog: Current WhatsApp state is [${state}]`);
-
-        if (state === 'open') {
-          // الجلسة متصلة - نقوم بتنشيط الإعدادات الاستباقية وإرسال "Available" لإبقاء الجلسة حية وحقيقية
-          await fetch(`${evolutionUrl}/settings/set/${evolutionInstanceName}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
-            body: JSON.stringify({
-              alwaysOnline: true,
-              readMessages: true,
-              readStatus: true
-            })
-          });
-
-          // إرسال تواجد (Presence) لإيهام السيرفر بالنشاط البشري المستمر
-          await fetch(`${evolutionUrl}/instance/setPresence/${evolutionInstanceName}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
-            body: JSON.stringify({ presence: 'available' })
-          });
-
+        if (stateRes.status === 404) {
+          console.warn('⚠️ Watchdog: Instance not found (404). Needs manual setup.');
           return;
         }
+        console.warn(`⚠️ Watchdog: Unexpected response (HTTP ${stateRes.status}).`);
+        return;
       }
 
-      // 2. إذا لم تكن الحالة OPEN أو إذا فشل الطلب السابق -> نحاول إعادة الربط
-      console.log(`🔁 Watchdog: Triggering auto-reconnect for [${evolutionInstanceName}]...`);
-      const connectRes = await fetch(`${evolutionUrl}/instance/connect/${evolutionInstanceName}`, {
-        headers: { 'apikey': evolutionApiKey }
-      });
+      // نجح الطلب — إعادة العدادات
+      circuitBreaker.recordSuccess();
+      watchdogConsecutiveFailures = 0;
 
-      const connectData = await connectRes.json();
-      console.log(`✅ Watchdog Result: ${JSON.stringify(connectData).substring(0, 100)}`);
+      const state = stateData?.instance?.state || stateData?.state;
+      console.log(`📡 Watchdog: WhatsApp state is [${state}]`);
+
+      if (state === 'open') {
+        // الجلسة متصلة — نرسل presence فقط (بدون ضغط إضافي على settings)
+        try {
+          await fetchWithTimeout(
+            `${evolutionUrl}/instance/setPresence/${evolutionInstanceName}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
+              body: JSON.stringify({ presence: 'available' })
+            },
+            8000
+          );
+        } catch (presErr) {
+          // لا نعتبره فشلاً حرجاً
+        }
+
+        // معالجة الرسائل المنتظرة في الطابور
+        if (messageQueue.getQueueSize() > 0) {
+          console.log(`📤 Watchdog: ${messageQueue.getQueueSize()} queued messages found. Processing...`);
+          messageQueue._processQueue();
+        }
+
+        return;
+      }
+
+      // 2. إذا لم تكن الحالة OPEN → نحاول إعادة الربط
+      console.log(`🔁 Watchdog: Triggering auto-reconnect for [${evolutionInstanceName}]...`);
+      try {
+        const connectRes = await fetchWithTimeout(
+          `${evolutionUrl}/instance/connect/${evolutionInstanceName}`,
+          { headers: { 'apikey': evolutionApiKey } },
+          15000
+        );
+
+        let connectData;
+        const connectText = await connectRes.text();
+        try {
+          connectData = connectText ? JSON.parse(connectText) : {};
+        } catch (e) {
+          connectData = { message: connectText };
+        }
+
+        if (connectRes.ok) {
+          console.log(`✅ Watchdog: Reconnect triggered. Response: ${JSON.stringify(connectData).substring(0, 100)}`);
+        } else {
+          console.warn(`⚠️ Watchdog: Reconnect failed (HTTP ${connectRes.status})`);
+        }
+      } catch (connErr) {
+        console.warn(`⚠️ Watchdog: Reconnect request failed: ${connErr.message}`);
+      }
 
     } catch (err) {
       console.error('❌ WhatsApp Watchdog error:', err.message);

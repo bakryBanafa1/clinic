@@ -1,7 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { authMiddleware } = require('../middleware/auth');
-const { renderTemplate, sendWhatsAppMessage } = require('../lib/utils');
+const { renderTemplate, sendWhatsAppMessage, fetchWithTimeout, circuitBreaker } = require('../lib/utils');
 const router = express.Router();
 
 // Helper function to format Evolution URL
@@ -44,7 +44,8 @@ router.get('/config', authMiddleware, async (req, res) => {
     res.json({
       evolutionApiUrl: settings.evolutionApiUrl || '',
       evolutionApiKey: settings.evolutionApiKey || '',
-      evolutionInstanceName: settings.evolutionInstanceName || ''
+      evolutionInstanceName: settings.evolutionInstanceName || '',
+      aiPrompt: settings.aiPrompt || ''
     });
   } catch (err) {
     console.error('Error fetching Evolution config:', err);
@@ -55,7 +56,7 @@ router.get('/config', authMiddleware, async (req, res) => {
 // POST: Save Evolution Configuration
 router.post('/config', authMiddleware, async (req, res) => {
   try {
-    const { evolutionApiUrl, evolutionApiKey, evolutionInstanceName } = req.body;
+    const { evolutionApiUrl, evolutionApiKey, evolutionInstanceName, aiPrompt } = req.body;
     let settings = await prisma.clinicSettings.findFirst();
     
     if (!settings) {
@@ -67,7 +68,8 @@ router.post('/config', authMiddleware, async (req, res) => {
       data: {
         evolutionApiUrl: formatEvolutionUrl(evolutionApiUrl),
         evolutionApiKey,
-        evolutionInstanceName
+        evolutionInstanceName,
+        aiPrompt
       }
     });
 
@@ -75,11 +77,23 @@ router.post('/config', authMiddleware, async (req, res) => {
       success: true,
       evolutionApiUrl: updated.evolutionApiUrl,
       evolutionApiKey: updated.evolutionApiKey,
-      evolutionInstanceName: updated.evolutionInstanceName
+      evolutionInstanceName: updated.evolutionInstanceName,
+      aiPrompt: updated.aiPrompt
     });
   } catch (err) {
     console.error('Error saving Evolution config:', err);
     res.status(500).json({ error: 'خطأ في حفظ الإعدادات' });
+  }
+});
+
+// GET: Public endpoint to fetch the AI Prompt
+router.get('/ai-prompt', async (req, res) => {
+  try {
+    const settings = await prisma.clinicSettings.findFirst();
+    res.json({ aiPrompt: settings?.aiPrompt || '' });
+  } catch (err) {
+    console.error('Error fetching AI prompt:', err);
+    res.status(500).json({ error: 'Failed to fetch AI Prompt' });
   }
 });
 
@@ -202,26 +216,46 @@ router.get('/instance/status', authMiddleware, async (req, res) => {
     if (!evolutionUrl.startsWith('http')) {
       evolutionUrl = 'https://' + evolutionUrl;
     }
+    evolutionUrl = evolutionUrl.replace(/\/$/, '');
     const globalApiKey = settings.evolutionApiKey;
     const instanceName = settings.evolutionInstanceName;
 
-    // Check instance connection state
-    const response = await fetch(`${evolutionUrl}/instance/connectionState/${instanceName}`, {
-      method: 'GET',
-      headers: {
-        'apikey': globalApiKey
-      }
-    });
+    // Check instance connection state with timeout
+    let response;
+    try {
+      response = await fetchWithTimeout(
+        `${evolutionUrl}/instance/connectionState/${instanceName}`,
+        { method: 'GET', headers: { 'apikey': globalApiKey } },
+        12000
+      );
+    } catch (fetchErr) {
+      // Timeout or network error - return last known or unknown state
+      const isTimeout = fetchErr.name === 'AbortError';
+      console.warn(`⚠️ Status check ${isTimeout ? 'timeout' : 'failed'}: ${fetchErr.message}`);
+      return res.json({
+        state: 'unknown',
+        statusReason: isTimeout ? 'الخادم لا يستجيب - جاري إعادة المحاولة' : fetchErr.message
+      });
+    }
 
     if (!response.ok) {
-       // If instance not found, it returns 404
        if (response.status === 404) {
          return res.json({ state: 'close', statusReason: 'Instance not found' });
+       }
+       if (response.status === 503) {
+         return res.json({ state: 'unknown', statusReason: 'الخادم مشغول - جاري إعادة المحاولة تلقائياً' });
        }
        throw new Error(`Evolution API Error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    let data;
+    const responseText = await response.text();
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch (e) {
+      data = {};
+    }
+
     // data.instance.state => "open", "close", "connecting"
     res.json({
       state: data?.instance?.state || 'close',
@@ -229,7 +263,7 @@ router.get('/instance/status', authMiddleware, async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Error checking instance status:', err);
+    console.error('Error checking instance status:', err.message);
     res.status(500).json({ error: 'فشل الاتصال بـ EvolutionAPI', details: err.message });
   }
 });
@@ -382,9 +416,8 @@ router.post('/webhook', async (req, res) => {
 
   try {
     const body = req.body;
-    const event = body?.event || body?.apikey; // بعض الإصدارات تختلف في البنية
 
-    console.log(`📡 Evolution Webhook event received: ${JSON.stringify(body).substring(0, 200)}`);
+    console.log(`📡 Webhook event: ${body?.event || 'unknown'} (${JSON.stringify(body).substring(0, 150)}...)`);
 
     // حدث تغيير حالة الاتصال
     if (body?.event === 'connection.update' || body?.data?.state) {
@@ -394,34 +427,53 @@ router.post('/webhook', async (req, res) => {
       console.log(`🔄 Connection state update: [${instanceName}] → ${state}`);
 
       if (state === 'close' || state === 'connecting') {
-        // الجلسة انقطعت → نحاول إعادة الاتصال تلقائياً
         const settings = await prisma.clinicSettings.findFirst();
         if (!settings || !settings.evolutionApiUrl || !settings.evolutionApiKey) return;
         if (instanceName && instanceName !== settings.evolutionInstanceName) return;
 
         let evolutionUrl = settings.evolutionApiUrl;
         if (!evolutionUrl.startsWith('http')) evolutionUrl = 'https://' + evolutionUrl;
+        evolutionUrl = evolutionUrl.replace(/\/$/, '');
+
+        // تحقق من circuit breaker قبل محاولة الاتصال
+        if (!circuitBreaker.canProceed()) {
+          console.log('⏸️ Webhook: Skipping auto-reconnect (circuit breaker open)');
+          return;
+        }
 
         console.log(`🔁 Auto-reconnecting instance: ${settings.evolutionInstanceName}...`);
 
-        // انتظر ثانيتين ثم حاول الاتصال
-        await new Promise(r => setTimeout(r, 2000));
+        // انتظار متدرج حسب شدة المشكلة
+        await new Promise(r => setTimeout(r, 3000));
 
         try {
-          const connectRes = await fetch(`${evolutionUrl}/instance/connect/${settings.evolutionInstanceName}`, {
-            method: 'GET',
-            headers: { 'apikey': settings.evolutionApiKey }
-          });
-          const connectData = await connectRes.json();
+          const connectRes = await fetchWithTimeout(
+            `${evolutionUrl}/instance/connect/${settings.evolutionInstanceName}`,
+            { method: 'GET', headers: { 'apikey': settings.evolutionApiKey } },
+            15000
+          );
+
           if (connectRes.ok) {
+            let connectData;
+            try {
+              connectData = await connectRes.json();
+            } catch (e) {
+              connectData = {};
+            }
+            circuitBreaker.recordSuccess();
             console.log(`✅ Auto-reconnect triggered. State: ${connectData?.state || 'pending'}`);
           } else {
-            console.warn(`⚠️ Auto-reconnect response: ${JSON.stringify(connectData)}`);
+            if (connectRes.status === 503) {
+              circuitBreaker.recordFailure();
+            }
+            console.warn(`⚠️ Auto-reconnect response: HTTP ${connectRes.status}`);
           }
         } catch (reconnectErr) {
+          circuitBreaker.recordFailure();
           console.error('❌ Auto-reconnect failed:', reconnectErr.message);
         }
       } else if (state === 'open') {
+        circuitBreaker.recordSuccess();
         console.log(`✅ WhatsApp session is OPEN and active for instance: ${instanceName}`);
       }
     }

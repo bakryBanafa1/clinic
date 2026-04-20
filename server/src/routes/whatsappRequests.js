@@ -1,123 +1,146 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
+const { sendWhatsAppMessage, cleanPhoneNumber } = require('../lib/utils');
 const router = express.Router();
 
-// GET: Save request only (for external links) - no actual WhatsApp sending
+// GET: Send WhatsApp message via browser link (Direct Execution)
 router.get('/send', async (req, res) => {
   try {
-    const { phone, message, name, service } = req.query;
+    const { phone, message, name, service, mediaUrl } = req.query;
     
+    if (!phone) {
+      return res.status(400).json({ error: 'رقم الهاتف مطلوب في الرابط (phone)' });
+    }
+    if (!message && !mediaUrl) {
+      return res.status(400).json({ error: 'يجب توفير إما نص الرسالة (message) أو رابط الوسائط (mediaUrl) أو كليهما' });
+    }
+
+    const fullMessage = message ? `${name ? 'الاسم: ' + name + '\n' : ''}${service ? 'الخدمة: ' + service + '\n' : ''}${message}` : '';
+    
+    let cleanPhone = cleanPhoneNumber(phone) || phone.replace(/[^0-9]/g, '');
+
+    const settings = await prisma.clinicSettings.findFirst();
+    if (!settings || !settings.evolutionApiUrl || !settings.evolutionApiKey || !settings.evolutionInstanceName) {
+      // لا توجد إعدادات كاملة -> يحفظ الطلب
+      const request = await prisma.whatsAppRequest.create({
+        data: {
+          phone: cleanPhone,
+          message: fullMessage,
+          status: 'pending'
+        }
+      });
+      return res.status(200).json({ 
+        success: true, 
+        message: 'تم إضافة الطلب في الانتظار (إعدادات الواتساب غير مكتملة)',
+        data: request
+      });
+    }
+
+    // إرسال عبر الدالة الموحدة مع دعم الوسائط אם وجدت
+    const result = await sendWhatsAppMessage(settings, cleanPhone, fullMessage, 3, mediaUrl);
+
+    if (result && result.success) {
+      const request = await prisma.whatsAppRequest.create({
+        data: {
+          phone: cleanPhone,
+          message: fullMessage,
+          status: 'sent',
+          sentAt: new Date()
+        }
+      });
+      return res.json({ success: true, message: 'تم إرسال الرسالة بنجاح', data: result.data, requestId: request.id });
+    } else {
+      const request = await prisma.whatsAppRequest.create({
+        data: {
+          phone: cleanPhone,
+          message: fullMessage,
+          status: result?.queued ? 'queued' : 'failed'
+        }
+      });
+      
+      if (result?.queued) {
+        return res.json({ 
+          success: true, 
+          message: 'تعذر الاتصال حالياً. تم إضافة الرسالة للطابور وسيتم إرسالها تلقائياً',
+          requestId: request.id
+        });
+      }
+      return res.status(500).json({ error: 'فشل إرسال الرسالة', details: result?.error });
+    }
+  } catch (err) {
+    console.error('Error in GET /send WhatsApp:', err);
+    res.status(500).json({ error: 'حدث خطأ غير متوقع', details: err.message });
+  }
+});
+
+// POST: Send WhatsApp message via Evolution API (uses shared utility)
+router.post('/send', async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+
     if (!phone || !message) {
       return res.status(400).json({ error: 'رقم الهاتف والرسالة مطلوبان' });
     }
 
-    let cleanPhone = phone.replace(/[^0-9]/g, '');
-    if (!cleanPhone.startsWith('966') && !cleanPhone.startsWith('967')) {
-      cleanPhone = '966' + cleanPhone;
+    let cleanPhone = cleanPhoneNumber(phone);
+    if (!cleanPhone) {
+      return res.status(400).json({ error: 'رقم الهاتف غير صالح' });
     }
-    cleanPhone = cleanPhone + '@c.us';
 
-    const request = await prisma.whatsAppRequest.create({
-      data: {
-        phone: cleanPhone,
-        message: `${name ? name + '\n' : ''}${service ? 'الخدمة: ' + service + '\n' : ''}${message}`,
-        status: 'pending'
+    const settings = await prisma.clinicSettings.findFirst();
+    if (!settings || !settings.evolutionApiUrl || !settings.evolutionApiKey || !settings.evolutionInstanceName) {
+      // لا إعدادات → حفظ الطلب كـ pending
+      const request = await prisma.whatsAppRequest.create({
+        data: {
+          phone: cleanPhone,
+          message,
+          status: 'pending'
+        }
+      });
+      return res.status(200).json({ 
+        success: true, 
+        message: 'تم إضافة الطلب في الانتظار',
+        requestId: request.id
+      });
+    }
+
+    // إرسال عبر الدالة الموحدة
+    const result = await sendWhatsAppMessage(settings, cleanPhone, message);
+
+    if (result && result.success) {
+      const request = await prisma.whatsAppRequest.create({
+        data: {
+          phone: cleanPhone,
+          message,
+          status: 'sent',
+          sentAt: new Date()
+        }
+      });
+      return res.json({ success: true, message: 'تم إرسال الرسالة بنجاح', requestId: request.id });
+    } else {
+      const request = await prisma.whatsAppRequest.create({
+        data: {
+          phone: cleanPhone,
+          message,
+          status: result?.queued ? 'queued' : 'failed'
+        }
+      });
+      
+      if (result?.queued) {
+        return res.json({ 
+          success: true, 
+          message: 'تم إضافة الرسالة للطابور وسيتم إرسالها عند عودة الاتصال',
+          requestId: request.id
+        });
       }
-    });
-
-    res.json({ 
-      success: true, 
-      message: 'تم حجز الطلب بنجاح',
-      requestId: request.id
-    });
-  } catch (err) {
-    console.error('Error saving request:', err);
-    res.status(500).json({ error: 'خطأ في حجز الطلب', details: err.message });
-  }
-});
-
-// POST: Send WhatsApp message via Evolution API
-router.post('/send', async (req, res) => {
-  try {
-    const { phone, message } = req.body;
-    return await sendWhatsAppMessage(phone, message, res);
+      
+      return res.status(500).json({ error: 'فشل إرسال الرسالة', details: result?.error });
+    }
   } catch (err) {
     console.error('Error sending WhatsApp message:', err);
     res.status(500).json({ error: 'خطأ في إرسال الرسالة', details: err.message });
   }
 });
-
-// Shared function for sending WhatsApp messages
-async function sendWhatsAppMessage(phone, message, res) {
-  if (!phone || !message) {
-    return res.status(400).json({ error: 'رقم الهاتف والرسالة مطلوبان' });
-  }
-
-  let cleanPhone = phone.replace(/[^0-9]/g, '');
-  if (cleanPhone.startsWith('0')) {
-    cleanPhone = '966' + cleanPhone.substring(1);
-  } else if (!cleanPhone.startsWith('966')) {
-    cleanPhone = '966' + cleanPhone;
-  }
-  cleanPhone = cleanPhone + '@c.us';
-
-  const settings = await prisma.clinicSettings.findFirst();
-  if (!settings || !settings.evolutionApiUrl || !settings.evolutionApiKey || !settings.evolutionInstanceName) {
-    const request = await prisma.whatsAppRequest.create({
-      data: {
-        phone: cleanPhone,
-        message,
-        status: 'pending'
-      }
-    });
-    return res.status(200).json({ 
-      success: true, 
-      message: 'تم إضافة الطلب في الانتظار',
-      requestId: request.id
-    });
-  }
-
-  let evolutionUrl = settings.evolutionApiUrl;
-  if (!evolutionUrl.startsWith('http')) {
-    evolutionUrl = 'https://' + evolutionUrl;
-  }
-
-  const response = await fetch(`${evolutionUrl}/message/sendText/${settings.evolutionInstanceName}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': settings.evolutionApiKey
-    },
-    body: JSON.stringify({
-      number: cleanPhone,
-      text: message
-    })
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    await prisma.whatsAppRequest.create({
-      data: {
-        phone: cleanPhone,
-        message,
-        status: 'failed'
-      }
-    });
-    return res.status(500).json({ error: 'فشل إرسال الرسالة', details: data.message });
-  }
-
-  const request = await prisma.whatsAppRequest.create({
-    data: {
-      phone: cleanPhone,
-      message,
-      status: 'sent',
-      sentAt: new Date()
-    }
-  });
-
-  res.json({ success: true, message: 'تم إرسال الرسالة بنجاح', requestId: request.id });
-}
 
 // GET: List all WhatsApp requests
 router.get('/', async (req, res) => {

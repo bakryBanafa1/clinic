@@ -6,6 +6,33 @@ import './whatsapp.css';
 // ===================== EVOLUTION API DOCS DATA =====================
 const API_DOCS = [
   {
+    section: 'الربط المباشر المبسط (Easy APIs)',
+    icon: '🚀',
+    endpoints: [
+      { 
+        method: 'GET', 
+        path: '/prompts', 
+        desc: 'جلب بيانات التوجيه (AI Prompt) الخاصة بالفرع لاستخدامها في البوتات', 
+        body: null,
+        isCustom: true
+      },
+      { 
+        method: 'GET', 
+        path: '/whatsapp-requests/send?phone=966500000000&message=مرحبا', 
+        desc: 'إرسال رسالة نصية عبر رابط مباشر (مثالي للردود الآلية والكاشير)', 
+        body: null,
+        isCustom: true
+      },
+      { 
+        method: 'GET', 
+        path: '/whatsapp-requests/send?phone=966500000000&message=مرحبا&mediaUrl=https://example.com/image.jpg', 
+        desc: 'إرسال رسالة نصية + صورة عبر رابط مباشر', 
+        body: null,
+        isCustom: true
+      }
+    ]
+  },
+  {
     section: 'Instance',
     icon: '🖥️',
     endpoints: [
@@ -139,7 +166,8 @@ const WhatsAppConnection = () => {
   const [config, setConfig] = useState({
     evolutionApiUrl: '',
     evolutionApiKey: '',
-    evolutionInstanceName: ''
+    evolutionInstanceName: '',
+    aiPrompt: ''
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -176,7 +204,8 @@ const WhatsAppConnection = () => {
       setConfig({
         evolutionApiUrl: data.evolutionApiUrl || '',
         evolutionApiKey: data.evolutionApiKey || '',
-        evolutionInstanceName: data.evolutionInstanceName || ''
+        evolutionInstanceName: data.evolutionInstanceName || '',
+        aiPrompt: data.aiPrompt || ''
       });
     } catch (err) {
       console.error(err);
@@ -225,12 +254,23 @@ const WhatsAppConnection = () => {
     const epId = ep.method + ep.path;
     setTestLoading(prev => ({ ...prev, [epId]: true }));
     try {
-      const body = testBodies[epId] || ep.body || '';
-      const response = await api.post('/evolution/execute', {
-        path: ep.path,
-        method: ep.method,
-        body: body ? JSON.parse(body) : null
-      });
+      const bodyStr = testBodies[epId] || ep.body || '';
+      let response;
+      
+      if (ep.isCustom) {
+        if (ep.method === 'GET') {
+          response = await api.get(ep.path);
+        } else {
+          response = await api.post(ep.path, bodyStr ? JSON.parse(bodyStr) : null);
+        }
+      } else {
+        response = await api.post('/evolution/execute', {
+          path: ep.path,
+          method: ep.method,
+          body: bodyStr ? JSON.parse(bodyStr) : null
+        });
+      }
+      
       setTestResults(prev => ({ ...prev, [epId]: response }));
       showMessage('تم تنفيذ الطلب بنجاح ✅');
     } catch (err) {
@@ -468,6 +508,10 @@ const WhatsAppConnection = () => {
           <span className="tab-icon">📖</span>
           <span>توثيق الـ API</span>
         </button>
+        <button className={`wa-tab-btn ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>
+          <span className="tab-icon">🤖</span>
+          <span>توجيه الذكاء الاصطناعي</span>
+        </button>
       </div>
 
       {/* ==================== TAB 1: CONNECTION ==================== */}
@@ -576,7 +620,8 @@ const WhatsAppConnection = () => {
                 <span className="status-text">
                   {connectionState === 'open' ? 'متصل بالواتساب' :
                     connectionState === 'connecting' ? 'جاري الاتصال...' :
-                      connectionState === 'qr_pending' ? 'بانتظار المسح' : 'غير متصل'}
+                      connectionState === 'qr_pending' ? 'بانتظار المسح' :
+                        connectionState === 'unknown' ? 'جاري إعادة الاتصال...' : 'غير متصل'}
                 </span>
               </div>
             </div>
@@ -734,6 +779,40 @@ const WhatsAppConnection = () => {
               {notifSaving ? <RefreshCw className="spin" size={20} /> : <Save size={20} />}
               <span>حفظ جميع الإشعارات</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== TAB 4: AI PROMPT ==================== */}
+      {activeTab === 'ai' && (
+        <div className="whatsapp-grid" style={{ gridTemplateColumns: '1fr' }}>
+          <div className="config-card paper-card">
+            <h2 className="card-title">إعدادات الذكاء الاصطناعي (AI Prompt)</h2>
+            <p className="text-sm text-muted mb-4" style={{ marginBottom: '1rem' }}>
+              يمكنك استخدام هذا الحقل لإضافة وتعديل نص التوجيه الخاص بالذكاء الاصطناعي. ليتم استعلامه من أي نظام خارجي عبر API التالي:
+              <br/>
+              <code dir="ltr" style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', display: 'inline-block', marginTop: '8px' }}>
+                GET /api/evolution/ai-prompt
+              </code>
+            </p>
+            <form onSubmit={handleSaveConfig} className="settings-form">
+              <div className="form-group">
+                <textarea
+                  name="aiPrompt"
+                  className="input-field"
+                  placeholder="أدخل توجيه الذكاء الاصطناعي (Prompt) هنا..."
+                  value={config.aiPrompt}
+                  onChange={handleChange}
+                  rows={15}
+                  style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.6' }}
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary" disabled={saving} style={{ marginTop: '1rem' }}>
+                {saving ? <RefreshCw className="spin" size={20} /> : <Save size={20} />}
+                <span>حفظ التوجيه</span>
+              </button>
+            </form>
           </div>
         </div>
       )}

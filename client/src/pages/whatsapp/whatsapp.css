@@ -137,6 +137,9 @@
 .status-badge.close .status-dot { background-color: var(--danger); }
 .status-badge.close { color: var(--danger); background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
 
+.status-badge.unknown .status-dot { background-color: #f59e0b; animation: pulse 2s infinite; }
+.status-badge.unknown { color: #d97706; background-color: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.2); }
+
 .qr-container {
   display: flex;
   flex-direction: column;

@@ -305,6 +305,7 @@ model ClinicSettings {
   evolutionApiKey        String?
   evolutionInstanceName  String?
   webhookUrl             String? // رابط الـ Webhook المسجل في Evolution API
+  aiPrompt               String? // 🤖 AI Prompt
 
   // إعدادات إشعارات الواتساب
   followupReminderEnabled     Boolean @default(true)
