@@ -43,6 +43,7 @@ router.put('/', authMiddleware, async (req, res) => {
       appointmentDuration, currency, taxRate,
       invoiceNotes, prescriptionNotes, headerColor,
       whatsappEnabled, whatsappNumber, minPaymentAmount,
+      postVisitEnabled, postVisitTemplate,
       queueExaminationRatio, queueFollowupRatio
     } = req.body;
 
@@ -64,6 +65,7 @@ router.put('/', authMiddleware, async (req, res) => {
         invoiceNotes, prescriptionNotes, headerColor,
         whatsappEnabled, whatsappNumber,
         minPaymentAmount: minPaymentAmount !== undefined ? parseFloat(minPaymentAmount) : undefined,
+        postVisitEnabled, postVisitTemplate,
         queueExaminationRatio: queueExaminationRatio !== undefined ? parseInt(queueExaminationRatio) : undefined,
         queueFollowupRatio: queueFollowupRatio !== undefined ? parseInt(queueFollowupRatio) : undefined
       }

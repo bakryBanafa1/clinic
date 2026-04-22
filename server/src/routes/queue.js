@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { authMiddleware } = require('../middleware/auth');
+const { renderTemplate, sendWhatsAppMessage } = require('../lib/utils');
 const router = express.Router();
 
 // دالة ترتيب الدور بالتبادل بين المعاينات والمراجعات
@@ -174,6 +175,34 @@ router.put('/:id/complete', authMiddleware, async (req, res) => {
       where: { id: existingEntry.appointmentId },
       data: { status: 'completed' }
     });
+
+    // إرسال رسالة شكر بعد الزيارة عبر الواتساب
+    try {
+      const clinicSettings = await prisma.clinicSettings.findFirst();
+      const patient = await prisma.patient.findUnique({
+        where: { id: existingEntry.patientId },
+        select: { name: true, phone: true, fileNumber: true }
+      });
+      const doctor = await prisma.doctor.findUnique({
+        where: { id: existingEntry.doctorId },
+        include: { user: { select: { name: true } } }
+      });
+
+      if (clinicSettings?.postVisitEnabled && patient?.phone) {
+        const variables = {
+          'اسم_المريض': patient.name,
+          'اسم_الطبيب': doctor?.user?.name || '',
+          'تاريخ_الموعد': new Date().toISOString().split('T')[0],
+          'وقت_الموعد': '',
+          'اسم_العيادة': clinicSettings.clinicName || 'العيادة',
+          'رقم_الملف': patient.fileNumber || ''
+        };
+        const msg = renderTemplate(clinicSettings.postVisitTemplate, variables);
+        sendWhatsAppMessage(clinicSettings, patient.phone, msg).catch(e => console.error('WhatsApp post-visit notify error:', e));
+      }
+    } catch (whatsappErr) {
+      console.error('WhatsApp post-visit notification error (non-blocking):', whatsappErr);
+    }
 
     res.json(entry);
   } catch (err) {

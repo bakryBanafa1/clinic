@@ -12,6 +12,8 @@ const ClinicSettings = () => {
     currency: 'YER',
     whatsappNumber: '',
     whatsappEnabled: false,
+    postVisitEnabled: false,
+    postVisitTemplate: '',
     queueExaminationRatio: 1,
     queueFollowupRatio: 1
   });
@@ -140,6 +142,38 @@ const ClinicSettings = () => {
                          <label>رقم واتساب المعتمد للإرسال</label>
                          <input type="text" name="whatsappNumber" value={settings.whatsappNumber || ''} onChange={handleChange} dir="ltr" placeholder="مثال: 966500000000" style={{ textAlign: 'right', width: '50%' }} />
                          <p className="text-sm text-muted mt-2">سيتم إرسال تذكيرات المواعيد تلقائياً من خلال هذا الرقم بواسطة نظام Baileys.</p>
+                      </div>
+
+                      {/* رسالة الشكر بعد الزيارة */}
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                         <div className="flex gap-3 items-center mb-3">
+                            <input
+                              type="checkbox"
+                              name="postVisitEnabled"
+                              id="postVisitEnabled"
+                              checked={settings.postVisitEnabled || false}
+                              onChange={handleChange}
+                              className="w-4 h-4 cursor-pointer"
+                            />
+                            <label htmlFor="postVisitEnabled" className="font-bold cursor-pointer">إرسال رسالة شكر بعد انتهاء الزيارة</label>
+                         </div>
+                         {settings.postVisitEnabled && (
+                            <div className="form-group mb-0">
+                               <label className="text-sm font-bold mb-2 block">نص رسالة الشكر (يمكنك استخدام المتغيرات)</label>
+                               <textarea
+                                 name="postVisitTemplate"
+                                 value={settings.postVisitTemplate || ''}
+                                 onChange={handleChange}
+                                 rows="3"
+                                 className="form-textarea"
+                                 placeholder="شكراً لزيارتك {اسم_المريض} 🙏 نتمنى لك السلامة..."
+                                 dir="rtl"
+                               />
+                               <p className="text-xs text-muted mt-2">
+                                  المتغيرات المتاحة: <code className="bg-gray-100 px-1 rounded">{'{اسم_المريض}'}</code> <code className="bg-gray-100 px-1 rounded">{'{اسم_الطبيب}'}</code> <code className="bg-gray-100 px-1 rounded">{'{اسم_العيادة}'}</code> <code className="bg-gray-100 px-1 rounded">{'{رقم_الملف}'}</code>
+                               </p>
+                            </div>
+                         )}
                       </div>
                   </div>
                )}
