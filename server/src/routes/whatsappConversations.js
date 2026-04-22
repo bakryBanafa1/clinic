@@ -10,55 +10,36 @@ const router = express.Router();
 
 router.get('/conversations', authMiddleware, async (req, res) => {
   try {
-    // Get distinct contacts from messages
-    const messages = await prisma.whatsappMessage.findMany({
-      where: {
-        direction: 'incoming'
-      },
-      select: {
-        fromNumber: true
-      },
+    // Get all messages with both incoming and outgoing
+    const allMessages = await prisma.whatsappMessage.findMany({
       orderBy: { createdAt: 'desc' },
       take: 500
     });
 
-    // Get unique contacts with latest message
+    // Get unique contacts (from both incoming and outgoing)
     const contactsMap = new Map();
-    for (const msg of messages) {
-      if (!contactsMap.has(msg.fromNumber)) {
-        contactsMap.set(msg.fromNumber, {
-          phone: msg.fromNumber,
-          lastMessage: null,
-          lastMessageAt: null,
-          unreadCount: 0
-        });
-      }
-    }
 
-    // Get full contact info and last message
-    const contacts = await prisma.whatsappMessage.findMany({
-      where: {
-        fromNumber: { in: Array.from(contactsMap.keys()) }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 500
-    });
+    for (const msg of allMessages) {
+      // For incoming messages, the contact is fromNumber
+      // For outgoing messages, the contact is toNumber
+      const contactPhone = msg.direction === 'incoming' ? msg.fromNumber : msg.toNumber;
 
-    const result = [];
-    const seen = new Set();
-
-    for (const msg of messages) {
-      if (!seen.has(msg.fromNumber)) {
-        seen.add(msg.fromNumber);
-        result.push({
-          phone: msg.fromNumber,
+      if (contactPhone && !contactsMap.has(contactPhone)) {
+        contactsMap.set(contactPhone, {
+          phone: contactPhone,
           lastMessage: msg.content,
           lastMessageAt: msg.createdAt,
           type: msg.type,
-          direction: 'incoming'
+          direction: msg.direction,
+          unreadCount: msg.status !== 'read' && msg.direction === 'incoming' ? 1 : 0
         });
       }
     }
+
+    // Convert to array and sort by last message time
+    const result = Array.from(contactsMap.values()).sort((a, b) =>
+      new Date(b.lastMessageAt) - new Date(a.lastMessageAt)
+    );
 
     res.json(result);
   } catch (err) {
@@ -102,17 +83,32 @@ router.get('/conversations/:phone', authMiddleware, async (req, res) => {
 router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
   try {
     const phone = cleanPhoneNumber(req.params.phone);
-    const { message, mediaUrl } = req.body;
 
     if (!phone) {
       return res.status(400).json({ error: 'رقم الهاتف غير صالح' });
     }
 
-    if (!message && !mediaUrl) {
-      return res.status(400).json({ error: 'نص الرسالة أو المرفق مطلوب' });
+    const settings = await prisma.clinicSettings.findFirst();
+    const isFormData = req.headers['content-type']?.includes('multipart/form-data');
+
+    let message = '';
+    let mediaUrl = null;
+    let fileUrl = null;
+
+    if (isFormData) {
+      // Handle FormData (file upload)
+      message = req.body.message || '';
+      // For now, we'll save the message without media URL
+      // Media upload to CDN would need to be implemented
+    } else {
+      // Handle JSON body
+      message = req.body.message || '';
+      mediaUrl = req.body.mediaUrl || null;
     }
 
-    const settings = await prisma.clinicSettings.findFirst();
+    if (!message && !mediaUrl && !fileUrl) {
+      return res.status(400).json({ error: 'نص الرسالة أو المرفق مطلوب' });
+    }
 
     if (!settings?.whatsappCloudEnabled) {
       // Try Evolution API if Cloud not enabled
@@ -121,13 +117,12 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
         const result = await sendWhatsAppMessage(settings, phone, message || '', mediaUrl);
 
         if (result.success || result.queued) {
-          // Save to database
           const savedMsg = await prisma.whatsappMessage.create({
             data: {
               fromNumber: settings.whatsappNumber || '',
               toNumber: phone,
               type: mediaUrl ? 'image' : 'text',
-              content: message || '[صورة]',
+              content: message || '[صورة/ملف]',
               status: 'sent',
               direction: 'outgoing',
               rawPayload: JSON.stringify({ queued: result.queued })
@@ -151,7 +146,7 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
           fromNumber: settings.whatsappCloudPhoneId || '',
           toNumber: phone,
           type: mediaUrl ? 'image' : 'text',
-          content: message || '[صورة]',
+          content: message || '[صورة/ملف]',
           status: 'sent',
           direction: 'outgoing',
           rawPayload: JSON.stringify({ messageId: result.messageId })
