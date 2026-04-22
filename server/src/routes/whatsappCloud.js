@@ -244,6 +244,28 @@ router.post('/webhook', async (req, res) => {
         for (const message of value.messages) {
           console.log('💬 Processing message:', message);
 
+          const messageContent = message.text?.body || '[رسالة]';
+          const messageType = message.type || 'text';
+
+          // Save message to database - THIS IS WHAT WAS MISSING
+          try {
+            const savedMsg = await prisma.whatsappMessage.create({
+              data: {
+                messageId: message.id,
+                fromNumber: message.from,
+                toNumber: settings?.whatsappCloudPhoneId || settings?.whatsappNumber || '', // Clinic's WhatsApp number
+                type: messageType,
+                content: messageContent,
+                status: 'received',
+                direction: 'incoming',
+                rawPayload: JSON.stringify(message)
+              }
+            });
+            console.log('✅ Message saved to database:', savedMsg.id);
+          } catch (dbErr) {
+            console.error('Error saving message:', dbErr);
+          }
+
           // Forward to N8N if enabled
           if (settings?.n8nWebhookEnabled && settings?.n8nWebhookUrl) {
             try {
@@ -272,35 +294,13 @@ router.post('/webhook', async (req, res) => {
                 contact: value.contacts?.[0] || {}
               };
 
-              // Forward to N8N (fire and forget)
               fetch(settings.n8nWebhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(n8nPayload)
               }).catch(e => console.error('N8N forwarding error:', e));
-
             } catch (n8nErr) {
               console.error('Error forwarding to N8N:', n8nErr);
-            }
-          }
-
-          // Save message to database if needed
-          try {
-            await prisma.whatsappMessage.create({
-              data: {
-                messageId: message.id,
-                fromNumber: message.from,
-                type: message.type,
-                content: message.text?.body || (message.image ? '[صورة]' : '[وسائط]'),
-                status: 'received',
-                direction: 'incoming',
-                rawPayload: JSON.stringify(message)
-              }
-            });
-          } catch (dbErr) {
-            // Ignore duplicate message errors
-            if (!dbErr.code === 'P2002') {
-              console.error('Error saving message:', dbErr);
             }
           }
         }
