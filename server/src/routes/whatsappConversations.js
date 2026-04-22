@@ -11,7 +11,7 @@ const router = express.Router();
 router.get('/conversations', authMiddleware, async (req, res) => {
   try {
     // Get all messages with both incoming and outgoing
-    const allMessages = await prisma.whatsappMessage.findMany({
+    const allMessages = await prisma.whatsAppMessage.findMany({
       orderBy: { createdAt: 'desc' },
       take: 500
     });
@@ -54,17 +54,22 @@ router.get('/conversations', authMiddleware, async (req, res) => {
 
 router.get('/conversations/:phone', authMiddleware, async (req, res) => {
   try {
-    const phone = cleanPhoneNumber(req.params.phone);
-    if (!phone) {
+    const rawPhone = req.params.phone;
+    const cleaned = cleanPhoneNumber(rawPhone);
+
+    if (!rawPhone && !cleaned) {
       return res.status(400).json({ error: 'رقم الهاتف غير صالح' });
     }
 
-    const messages = await prisma.whatsappMessage.findMany({
+    // Search using both raw and cleaned phone to handle format differences
+    const phoneVariants = [...new Set([rawPhone, cleaned].filter(Boolean))];
+
+    const messages = await prisma.whatsAppMessage.findMany({
       where: {
-        OR: [
-          { fromNumber: phone },
-          { toNumber: phone }
-        ]
+        OR: phoneVariants.flatMap(p => [
+          { fromNumber: p },
+          { toNumber: p }
+        ])
       },
       orderBy: { createdAt: 'asc' }
     });
@@ -82,11 +87,16 @@ router.get('/conversations/:phone', authMiddleware, async (req, res) => {
 
 router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
   try {
-    const phone = cleanPhoneNumber(req.params.phone);
+    const rawPhone = req.params.phone;
+    const phone = cleanPhoneNumber(rawPhone);
 
     if (!phone) {
       return res.status(400).json({ error: 'رقم الهاتف غير صالح' });
     }
+
+    // Use raw phone for DB storage (to match webhook fromNumber format)
+    // Use cleaned phone for actual API calls
+    const dbPhone = rawPhone;
 
     const settings = await prisma.clinicSettings.findFirst();
     const isFormData = req.headers['content-type']?.includes('multipart/form-data');
@@ -98,8 +108,6 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
     if (isFormData) {
       // Handle FormData (file upload)
       message = req.body.message || '';
-      // For now, we'll save the message without media URL
-      // Media upload to CDN would need to be implemented
     } else {
       // Handle JSON body
       message = req.body.message || '';
@@ -110,6 +118,9 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'نص الرسالة أو المرفق مطلوب' });
     }
 
+    // Get sender name from auth
+    const senderName = req.user?.name || '';
+
     if (!settings?.whatsappCloudEnabled) {
       // Try Evolution API if Cloud not enabled
       if (settings?.evolutionApiUrl && settings?.evolutionApiKey && settings?.evolutionInstanceName) {
@@ -117,15 +128,15 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
         const result = await sendWhatsAppMessage(settings, phone, message || '', mediaUrl);
 
         if (result.success || result.queued) {
-          const savedMsg = await prisma.whatsappMessage.create({
+          const savedMsg = await prisma.whatsAppMessage.create({
             data: {
               fromNumber: settings.whatsappNumber || '',
-              toNumber: phone,
+              toNumber: dbPhone,
               type: mediaUrl ? 'image' : 'text',
               content: message || '[صورة/ملف]',
               status: 'sent',
               direction: 'outgoing',
-              rawPayload: JSON.stringify({ queued: result.queued })
+              rawPayload: JSON.stringify({ queued: result.queued, senderName })
             }
           });
           return res.json(savedMsg);
@@ -141,15 +152,16 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
     const result = await sendWhatsAppCloudMessage(settings, phone, message || '', mediaUrl);
 
     if (result.success) {
-      const savedMsg = await prisma.whatsappMessage.create({
+      const savedMsg = await prisma.whatsAppMessage.create({
         data: {
-          fromNumber: settings.whatsappCloudPhoneId || '',
-          toNumber: phone,
+          messageId: result.messageId || null,
+          fromNumber: settings.whatsappNumber || settings.whatsappCloudPhoneId || '',
+          toNumber: dbPhone,
           type: mediaUrl ? 'image' : 'text',
           content: message || '[صورة/ملف]',
           status: 'sent',
           direction: 'outgoing',
-          rawPayload: JSON.stringify({ messageId: result.messageId })
+          rawPayload: JSON.stringify({ messageId: result.messageId, senderName })
         }
       });
       res.json(savedMsg);
@@ -168,10 +180,15 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
 
 router.put('/conversations/:phone/read', authMiddleware, async (req, res) => {
   try {
-    const phone = cleanPhoneNumber(req.params.phone);
+    const rawPhone = req.params.phone;
+    const cleaned = cleanPhoneNumber(rawPhone);
+    const phoneVariants = [...new Set([rawPhone, cleaned].filter(Boolean))];
 
-    await prisma.whatsappMessage.updateMany({
-      where: { fromNumber: phone },
+    await prisma.whatsAppMessage.updateMany({
+      where: {
+        fromNumber: { in: phoneVariants },
+        direction: 'incoming'
+      },
       data: { status: 'read' }
     });
 
@@ -179,6 +196,44 @@ router.put('/conversations/:phone/read', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Error marking as read:', err);
     res.status(500).json({ error: 'خطأ' });
+  }
+});
+
+// ============================================================
+// Debug endpoint - show recent messages in DB
+// ============================================================
+
+router.get('/debug/recent', authMiddleware, async (req, res) => {
+  try {
+    const messages = await prisma.whatsAppMessage.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        messageId: true,
+        fromNumber: true,
+        toNumber: true,
+        type: true,
+        content: true,
+        status: true,
+        direction: true,
+        createdAt: true
+      }
+    });
+
+    const totalCount = await prisma.whatsAppMessage.count();
+    const incomingCount = await prisma.whatsAppMessage.count({ where: { direction: 'incoming' } });
+    const outgoingCount = await prisma.whatsAppMessage.count({ where: { direction: 'outgoing' } });
+
+    res.json({
+      total: totalCount,
+      incoming: incomingCount,
+      outgoing: outgoingCount,
+      recent: messages
+    });
+  } catch (err) {
+    console.error('Debug error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

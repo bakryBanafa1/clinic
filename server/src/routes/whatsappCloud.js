@@ -225,108 +225,182 @@ router.get('/webhook', async (req, res) => {
 
 // POST: Webhook Receiver (Meta sends messages here)
 router.post('/webhook', async (req, res) => {
+  // Always respond 200 immediately so Meta doesn't retry
+  res.status(200).send('OK');
+
   try {
+    const body = req.body;
+    console.log('📨 [Cloud Webhook] Event received:', JSON.stringify(body).substring(0, 300));
+
+    if (body?.object !== 'whatsapp_business_account') {
+      console.log('📨 [Cloud Webhook] Ignored: not a whatsapp_business_account event');
+      return;
+    }
+
     const settings = await prisma.clinicSettings.findFirst();
+    if (!settings) {
+      console.error('❌ [Cloud Webhook] No clinic settings found!');
+      return;
+    }
 
-    // Always respond 200 quickly to acknowledge receipt
-    res.status(200).send('OK');
+    // Get the clinic's display phone number for toNumber
+    const clinicPhone = settings.whatsappNumber || settings.whatsappCloudPhoneId || '';
 
-    console.log('📨 WhatsApp Cloud Webhook received:', JSON.stringify(req.body, null, 2));
+    const entries = body.entry || [];
+    for (const entry of entries) {
+      const changes = entry.changes || [];
+      for (const change of changes) {
+        const value = change.value;
+        if (!value) continue;
 
-    // Check if this is a webhook verification request
-    if (req.body.object === 'whatsapp_business_account') {
-      const entry = req.body.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
+        // ===================== PROCESS INCOMING MESSAGES =====================
+        if (value.messages && value.messages.length > 0) {
+          const contacts = value.contacts || [];
+          
+          for (const message of value.messages) {
+            console.log(`💬 [Cloud Webhook] Message from ${message.from}: type=${message.type}, id=${message.id}`);
 
-      if (value?.messages) {
-        // Process incoming messages
-        for (const message of value.messages) {
-          console.log('💬 Processing message:', message);
+            // Extract content based on message type
+            let messageContent = '';
+            let messageType = message.type || 'text';
 
-          const messageContent = message.text?.body || '[رسالة]';
-          const messageType = message.type || 'text';
+            switch (message.type) {
+              case 'text':
+                messageContent = message.text?.body || '';
+                break;
+              case 'image':
+                messageContent = message.image?.caption || '[صورة]';
+                break;
+              case 'video':
+                messageContent = message.video?.caption || '[فيديو]';
+                break;
+              case 'audio':
+                messageContent = '[رسالة صوتية]';
+                break;
+              case 'document':
+                messageContent = message.document?.filename || '[مستند]';
+                break;
+              case 'location':
+                messageContent = `[موقع: ${message.location?.name || message.location?.address || 'موقع'}]`;
+                break;
+              case 'contacts':
+                messageContent = '[جهة اتصال]';
+                break;
+              case 'sticker':
+                messageContent = '[ملصق]';
+                break;
+              case 'reaction':
+                messageContent = message.reaction?.emoji || '[تفاعل]';
+                messageType = 'reaction';
+                break;
+              case 'button':
+                messageContent = message.button?.text || '[زر]';
+                break;
+              case 'interactive':
+                messageContent = message.interactive?.button_reply?.title || 
+                                 message.interactive?.list_reply?.title || '[تفاعلي]';
+                break;
+              default:
+                messageContent = `[${message.type || 'رسالة'}]`;
+            }
 
-          // Save message to database - THIS IS WHAT WAS MISSING
-          try {
-            const savedMsg = await prisma.whatsappMessage.create({
-              data: {
-                messageId: message.id,
-                fromNumber: message.from,
-                toNumber: settings?.whatsappCloudPhoneId || settings?.whatsappNumber || '', // Clinic's WhatsApp number
-                type: messageType,
-                content: messageContent,
-                status: 'received',
-                direction: 'incoming',
-                rawPayload: JSON.stringify(message)
-              }
-            });
-            console.log('✅ Message saved to database:', savedMsg.id);
-          } catch (dbErr) {
-            console.error('Error saving message:', dbErr);
-          }
+            // Get contact name from contacts array
+            const contactInfo = contacts.find(c => c.wa_id === message.from);
+            const contactName = contactInfo?.profile?.name || '';
 
-          // Forward to N8N if enabled
-          if (settings?.n8nWebhookEnabled && settings?.n8nWebhookUrl) {
+            // Save message to database
             try {
-              const n8nPayload = {
-                source: 'whatsapp_cloud',
-                timestamp: new Date().toISOString(),
-                clinic_id: settings.id,
-                clinic_name: settings.clinicName,
-                message: {
-                  id: message.id,
-                  from: message.from,
-                  type: message.type,
-                  text: message.text?.body || '',
-                  media: message.image ? {
-                    id: message.image.id,
-                    mime_type: message.image.mime_type,
-                    sha256: message.image.sha256
-                  } : null,
-                  location: message.location ? {
-                    latitude: message.location.latitude,
-                    longitude: message.location.longitude,
-                    name: message.location.name,
-                    address: message.location.address
-                  } : null
-                },
-                contact: value.contacts?.[0] || {}
-              };
+              // Check if message already exists (avoid duplicates)
+              const existing = await prisma.whatsAppMessage.findUnique({
+                where: { messageId: message.id }
+              });
 
-              fetch(settings.n8nWebhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(n8nPayload)
-              }).catch(e => console.error('N8N forwarding error:', e));
-            } catch (n8nErr) {
-              console.error('Error forwarding to N8N:', n8nErr);
+              if (existing) {
+                console.log(`⏭️ [Cloud Webhook] Message ${message.id} already exists, skipping`);
+                continue;
+              }
+
+              const savedMsg = await prisma.whatsAppMessage.create({
+                data: {
+                  messageId: message.id,
+                  fromNumber: message.from,
+                  toNumber: clinicPhone,
+                  type: messageType,
+                  content: messageContent,
+                  status: 'received',
+                  direction: 'incoming',
+                  rawPayload: JSON.stringify({
+                    ...message,
+                    _contactName: contactName,
+                    _timestamp: message.timestamp
+                  })
+                }
+              });
+              console.log(`✅ [Cloud Webhook] Message saved: id=${savedMsg.id}, from=${message.from}, content="${messageContent.substring(0, 50)}"`);
+            } catch (dbErr) {
+              // Handle unique constraint error gracefully
+              if (dbErr.code === 'P2002') {
+                console.log(`⏭️ [Cloud Webhook] Duplicate messageId ${message.id}, skipping`);
+              } else {
+                console.error(`❌ [Cloud Webhook] DB save error:`, dbErr.message);
+                console.error(`❌ [Cloud Webhook] Full error:`, JSON.stringify(dbErr));
+              }
+            }
+
+            // Forward to N8N if enabled
+            if (settings.n8nWebhookEnabled && settings.n8nWebhookUrl) {
+              try {
+                const n8nPayload = {
+                  source: 'whatsapp_cloud',
+                  timestamp: new Date().toISOString(),
+                  clinic_id: settings.id,
+                  clinic_name: settings.clinicName,
+                  message: {
+                    id: message.id,
+                    from: message.from,
+                    contactName: contactName,
+                    type: message.type,
+                    text: messageContent,
+                    media: message.image || message.video || message.audio || message.document || null,
+                    location: message.location || null
+                  },
+                  contact: contactInfo || {}
+                };
+
+                fetch(settings.n8nWebhookUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(n8nPayload)
+                }).catch(e => console.error('❌ [Cloud Webhook] N8N forwarding error:', e.message));
+              } catch (n8nErr) {
+                console.error('❌ [Cloud Webhook] N8N error:', n8nErr.message);
+              }
+            }
+          }
+        }
+
+        // ===================== HANDLE STATUS UPDATES =====================
+        if (value.statuses && value.statuses.length > 0) {
+          for (const status of value.statuses) {
+            console.log(`📊 [Cloud Webhook] Status: ${status.id} → ${status.status}`);
+
+            try {
+              const updated = await prisma.whatsAppMessage.updateMany({
+                where: { messageId: status.id },
+                data: { status: status.status }
+              });
+              if (updated.count > 0) {
+                console.log(`✅ [Cloud Webhook] Status updated for ${status.id}`);
+              }
+            } catch (dbErr) {
+              console.error('❌ [Cloud Webhook] Status update error:', dbErr.message);
             }
           }
         }
       }
-
-      // Handle status updates (delivered, read, etc.)
-      if (value?.statuses) {
-        for (const status of value.statuses) {
-          console.log('📊 Message status update:', status);
-
-          // Update message status in database
-          try {
-            await prisma.whatsappMessage.updateMany({
-              where: { messageId: status.id },
-              data: { status: status.status }
-            });
-          } catch (dbErr) {
-            console.error('Error updating message status:', dbErr);
-          }
-        }
-      }
     }
-
   } catch (err) {
-    console.error('Webhook receiver error:', err);
-    // Already sent 200 OK above, so just log
+    console.error('❌ [Cloud Webhook] Processing error:', err.message, err.stack);
   }
 });
 
@@ -367,90 +441,6 @@ router.post('/send', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('WhatsApp Cloud send error:', err);
     res.status(500).json({ error: 'خطأ في إرسال الرسالة' });
-  }
-});
-
-// ============================================================
-// WhatsApp Cloud API - Send Text Message (Public for External Systems)
-// URL: POST /api/whatsapp-cloud/public/send-text?phone=9665XXXXXXX&message=Hello
-// ============================================================
-router.get('/public/send-text', async (req, res) => {
-  try {
-    const { phone, message } = req.query;
-
-    if (!phone) {
-      return res.status(400).json({ error: 'رقم الهاتف مطلوب', example: '/public/send-text?phone=966500000000&message=مرحبا' });
-    }
-
-    if (!message) {
-      return res.status(400).json({ error: 'نص الرسالة مطلوب', example: '/public/send-text?phone=966500000000&message=مرحبا' });
-    }
-
-    const settings = await prisma.clinicSettings.findFirst();
-
-    if (!settings?.whatsappCloudEnabled) {
-      return res.status(400).json({ error: 'WhatsApp Cloud غير مفعّل' });
-    }
-
-    const result = await sendWhatsAppCloudMessage(settings, phone, message);
-
-    if (result.success) {
-      res.json({
-        success: true,
-        messageId: result.messageId,
-        status: 'sent'
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        error: result.error
-      });
-    }
-  } catch (err) {
-    console.error('WhatsApp Cloud public send error:', err);
-    res.status(500).json({ error: 'خطأ في إرسال الرسالة' });
-  }
-});
-
-// ============================================================
-// WhatsApp Cloud API - Send Text + Image (Public for External Systems)
-// URL: POST /api/whatsapp-cloud/public/send-image?phone=9665XXXXXXX&message=Description&mediaUrl=https://...
-// ============================================================
-router.get('/public/send-image', async (req, res) => {
-  try {
-    const { phone, message, mediaUrl } = req.query;
-
-    if (!phone) {
-      return res.status(400).json({ error: 'رقم الهاتف مطلوب', example: '/public/send-image?phone=966500000000&message=وصف&mediaUrl=https://...' });
-    }
-
-    if (!mediaUrl) {
-      return res.status(400).json({ error: 'رابط الصورة مطلوب' });
-    }
-
-    const settings = await prisma.clinicSettings.findFirst();
-
-    if (!settings?.whatsappCloudEnabled) {
-      return res.status(400).json({ error: 'WhatsApp Cloud غير مفعّل' });
-    }
-
-    const result = await sendWhatsAppCloudMessage(settings, phone, message || '', mediaUrl);
-
-    if (result.success) {
-      res.json({
-        success: true,
-        messageId: result.messageId,
-        status: 'sent'
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        error: result.error
-      });
-    }
-  } catch (err) {
-    console.error('WhatsApp Cloud public send image error:', err);
-    res.status(500).json({ error: 'خطأ في إرسال الصورة' });
   }
 });
 
