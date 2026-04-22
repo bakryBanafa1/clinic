@@ -86,7 +86,7 @@ const MainLayout = () => {
     { name: 'الأطباء', path: '/doctors', icon: <UserRound size={20} /> },
     { name: 'ربط الواتساب', path: '/whatsapp', icon: <Smartphone size={20} /> },
     { name: 'WhatsApp Cloud', path: '/whatsapp-cloud', icon: <Smartphone size={20} /> },
-    { name: 'WhatsApp Cloud', path: '/whatsapp-cloud', icon: <Smartphone size={20} /> },
+    { name: 'محادثات واتساب', path: '/whatsapp-chat', icon: <MessageCircle size={20} /> },
     { name: 'الإعدادات', path: '/settings', icon: <Settings size={20} /> },
   ];
 

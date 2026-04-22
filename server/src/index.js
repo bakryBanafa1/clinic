@@ -39,6 +39,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/api/evolution', require('./routes/evolution'));
 app.use('/api/whatsapp-cloud', require('./routes/whatsappCloud'));
+app.use('/api/whatsapp-conversations', require('./routes/whatsappConversations'));
 app.use('/api/whatsapp-requests', require('./routes/whatsappRequests'));
 app.use('/api/external-orders', require('./routes/externalOrders'));
 app.use('/api/prompts', require('./routes/prompts'));
