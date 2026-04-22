@@ -211,26 +211,35 @@ router.post('/', authMiddleware, async (req, res) => {
       return appt;
     });
 
+    // جلب clinicSettings مرة واحدة للاستخدام
+    const clinicSettings = await prisma.clinicSettings.findFirst();
+
     // إرسال إشعار واتساب تلقائي عند الحجز (في الخلفية - لا يؤثر على الحجز)
-    try {
-      const clinicSettings = await prisma.clinicSettings.findFirst();
-      if (clinicSettings && clinicSettings.bookingConfirmEnabled && appointment.patient?.phone) {
-        const variables = {
-          'اسم_المريض': appointment.patient.name,
-          'اسم_الطبيب': appointment.doctor?.user?.name || '',
-          'تاريخ_الموعد': appointment.date,
-          'وقت_الموعد': appointment.period === 'morning' ? 'الصباحية' : 'المسائية',
-          'اسم_العيادة': clinicSettings.clinicName || 'العيادة',
-          'رقم_الملف': ''
-        };
-        // جلب رقم الملف
-        const patientInfo = await prisma.patient.findUnique({ where: { id: appointment.patientId }, select: { fileNumber: true } });
-        variables['رقم_الملف'] = patientInfo?.fileNumber || '';
-        const msg = renderTemplate(clinicSettings.bookingConfirmTemplate, variables);
-        sendWhatsAppMessage(clinicSettings, appointment.patient.phone, msg).catch(e => console.error('WhatsApp booking notify error:', e));
+    if (clinicSettings?.bookingConfirmEnabled && appointment.patient?.phone && clinicSettings?.bookingConfirmTemplate) {
+      const variables = {
+        'اسم_المريض': appointment.patient.name,
+        'اسم_الطبيب': appointment.doctor?.user?.name || '',
+        'تاريخ_الموعد': appointment.date,
+        'وقت_الموعد': appointment.period === 'morning' ? 'الصباحية' : 'المسائية',
+        'اسم_العيادة': clinicSettings.clinicName || 'العيادة',
+        'رقم_الملف': ''
+      };
+      const patientInfo = await prisma.patient.findUnique({ where: { id: appointment.patientId }, select: { fileNumber: true } });
+      variables['رقم_الملف'] = patientInfo?.fileNumber || '';
+      const msg = renderTemplate(clinicSettings.bookingConfirmTemplate, variables);
+      if (msg) {
+        sendWhatsAppMessage(clinicSettings, appointment.patient.phone, msg)
+          .then(result => {
+            if (result && result.success) {
+              console.log(`✅ [Booking] WhatsApp sent to: ${appointment.patient.phone}`);
+            } else if (result && result.queued) {
+              console.log(`📥 [Booking] WhatsApp queued for: ${appointment.patient.phone}`);
+            } else {
+              console.log(`❌ [Booking] WhatsApp failed: ${result?.error}`);
+            }
+          })
+          .catch(e => console.error('❌ [Booking] WhatsApp error:', e.message));
       }
-    } catch (whatsappErr) {
-      console.error('WhatsApp booking notification error (non-blocking):', whatsappErr);
     }
 
     res.status(201).json(appointment);

@@ -1,7 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { authMiddleware } = require('../middleware/auth');
-const { renderTemplate, sendWhatsAppMessage, fetchWithTimeout, circuitBreaker } = require('../lib/utils');
+const { renderTemplate, sendWhatsAppMessage, fetchWithTimeout, circuitBreaker, messageQueue } = require('../lib/utils');
 const router = express.Router();
 
 // Helper function to format Evolution URL
@@ -560,6 +560,180 @@ router.get('/webhook/info', authMiddleware, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'فشل جلب معلومات الـ Webhook', details: err.message });
   }
+});
+
+// GET: WhatsApp System Status (Circuit Breaker + Queue + Connection)
+router.get('/system-status', authMiddleware, async (req, res) => {
+  try {
+    const settings = await prisma.clinicSettings.findFirst();
+
+    // حالة الـ Circuit Breaker
+    const cb = circuitBreaker.getStatus();
+
+    // حالة الطابور
+    const queue = messageQueue.getStatus();
+
+    // حالة الاتصال (إن أمكن)
+    let connectionState = 'unknown';
+    let connectionReason = '';
+
+    if (settings?.evolutionApiUrl && settings?.evolutionApiKey && settings?.evolutionInstanceName) {
+      let evolutionUrl = settings.evolutionApiUrl;
+      if (!evolutionUrl.startsWith('http')) evolutionUrl = 'https://' + evolutionUrl;
+      evolutionUrl = evolutionUrl.replace(/\/$/, '');
+
+      try {
+        const stateRes = await fetchWithTimeout(
+          `${evolutionUrl}/instance/connectionState/${settings.evolutionInstanceName}`,
+          { headers: { 'apikey': settings.evolutionApiKey } },
+          8000
+        );
+        if (stateRes.ok) {
+          const data = await stateRes.json().catch(() => ({}));
+          connectionState = data?.instance?.state || 'unknown';
+        } else {
+          connectionState = 'error';
+          connectionReason = `HTTP ${stateRes.status}`;
+        }
+      } catch (fetchErr) {
+        connectionState = 'unreachable';
+        connectionReason = fetchErr.name === 'AbortError' ? 'timeout' : fetchErr.message;
+      }
+    } else {
+      connectionState = 'not_configured';
+      connectionReason = 'Evolution API settings missing';
+    }
+
+    // حالة الإعدادات
+    const configStatus = {
+      apiUrl: !!(settings?.evolutionApiUrl),
+      apiKey: !!(settings?.evolutionApiKey),
+      instanceName: !!(settings?.evolutionInstanceName),
+      webhookUrl: !!(settings?.webhookUrl),
+      followupReminderEnabled: settings?.followupReminderEnabled || false,
+      bookingConfirmEnabled: settings?.bookingConfirmEnabled || false,
+      appointmentReminderEnabled: settings?.appointmentReminderEnabled || false
+    };
+
+    const isHealthy = connectionState === 'open' && !cb.isOpen && queue.size < 5;
+
+    res.json({
+      healthy: isHealthy,
+      connection: {
+        state: connectionState,
+        reason: connectionReason
+      },
+      circuitBreaker: {
+        isOpen: cb.isOpen,
+        failures: cb.failures,
+        consecutive503s: cb.consecutive503s,
+        remainingMs: cb.remainingMs,
+        remainingSeconds: Math.ceil(cb.remainingMs / 1000)
+      },
+      queue: {
+        size: queue.size,
+        processing: queue.processing,
+        items: queue.items
+      },
+      config: configStatus
+    });
+  } catch (err) {
+    console.error('System status error:', err);
+    res.status(500).json({ error: 'Failed to get system status' });
+  }
+});
+
+// POST: Reset Circuit Breaker (Manual)
+router.post('/circuit-breaker/reset', authMiddleware, async (req, res) => {
+  circuitBreaker.reset();
+  res.json({ success: true, message: 'Circuit breaker reset' });
+});
+
+// GET: WhatsApp System Status (Circuit Breaker + Queue + Connection)
+router.get('/system-status', authMiddleware, async (req, res) => {
+  try {
+    const settings = await prisma.clinicSettings.findFirst();
+
+    // حالة الـ Circuit Breaker
+    const cb = circuitBreaker.getStatus();
+
+    // حالة الطابور
+    const queue = messageQueue.getStatus();
+
+    // حالة الاتصال (إن أمكن)
+    let connectionState = 'unknown';
+    let connectionReason = '';
+
+    if (settings?.evolutionApiUrl && settings?.evolutionApiKey && settings?.evolutionInstanceName) {
+      let evolutionUrl = settings.evolutionApiUrl;
+      if (!evolutionUrl.startsWith('http')) evolutionUrl = 'https://' + evolutionUrl;
+      evolutionUrl = evolutionUrl.replace(/\/$/, '');
+
+      try {
+        const stateRes = await fetchWithTimeout(
+          `${evolutionUrl}/instance/connectionState/${settings.evolutionInstanceName}`,
+          { headers: { 'apikey': settings.evolutionApiKey } },
+          8000
+        );
+        if (stateRes.ok) {
+          const data = await stateRes.json().catch(() => ({}));
+          connectionState = data?.instance?.state || 'unknown';
+        } else {
+          connectionState = 'error';
+          connectionReason = `HTTP ${stateRes.status}`;
+        }
+      } catch (fetchErr) {
+        connectionState = 'unreachable';
+        connectionReason = fetchErr.name === 'AbortError' ? 'timeout' : fetchErr.message;
+      }
+    } else {
+      connectionState = 'not_configured';
+      connectionReason = 'Evolution API settings missing';
+    }
+
+    // حالة الإعدادات
+    const configStatus = {
+      apiUrl: !!(settings?.evolutionApiUrl),
+      apiKey: !!(settings?.evolutionApiKey),
+      instanceName: !!(settings?.evolutionInstanceName),
+      webhookUrl: !!(settings?.webhookUrl),
+      followupReminderEnabled: settings?.followupReminderEnabled || false,
+      bookingConfirmEnabled: settings?.bookingConfirmEnabled || false,
+      appointmentReminderEnabled: settings?.appointmentReminderEnabled || false
+    };
+
+    const isHealthy = connectionState === 'open' && !cb.isOpen && queue.size < 5;
+
+    res.json({
+      healthy: isHealthy,
+      connection: {
+        state: connectionState,
+        reason: connectionReason
+      },
+      circuitBreaker: {
+        isOpen: cb.isOpen,
+        failures: cb.failures,
+        consecutive503s: cb.consecutive503s,
+        remainingMs: cb.remainingMs,
+        remainingSeconds: Math.ceil(cb.remainingMs / 1000)
+      },
+      queue: {
+        size: queue.size,
+        processing: queue.processing,
+        items: queue.items
+      },
+      config: configStatus
+    });
+  } catch (err) {
+    console.error('System status error:', err);
+    res.status(500).json({ error: 'Failed to get system status' });
+  }
+});
+
+// POST: Reset Circuit Breaker (Manual)
+router.post('/circuit-breaker/reset', authMiddleware, async (req, res) => {
+  circuitBreaker.reset();
+  res.json({ success: true, message: 'Circuit breaker reset' });
 });
 
 // DELETE: Logout Instance
