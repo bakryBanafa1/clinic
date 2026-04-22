@@ -34,6 +34,12 @@ const WhatsAppCloudPage = () => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
 
+  // دالة إظهار الرسائل
+  const showMessage = (text, type = 'success') => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage({ text: '', type: '' }), 6000);
+  };
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -49,11 +55,6 @@ const WhatsAppCloudPage = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const showMsg = (text, type = 'success') => {
-    setMessage({ text, type });
-    setTimeout(() => setMessage({ text: '', type: '' }), 6000);
   };
 
   const handleChange = (e) => {
