@@ -15,6 +15,7 @@ import VisitsPage from './pages/visits';
 import FollowUpPage from './pages/followup';
 import ReportsPage from './pages/reports';
 import WhatsAppConnection from './pages/whatsapp';
+import WhatsAppCloudPage from './pages/whatsappCloud';
 import WhatsAppRequestsPage from './pages/whatsappRequests';
 
 const PrivateRoute = ({ children }) => {
@@ -45,6 +46,7 @@ function App() {
           <Route path="whatsapp-requests" element={<WhatsAppRequestsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="whatsapp" element={<WhatsAppConnection />} />
+          <Route path="whatsapp-cloud" element={<WhatsAppCloudPage />} />
           {/* We will add more routes here soon */}
         </Route>
       </Routes>

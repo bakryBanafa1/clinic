@@ -307,6 +307,18 @@ model ClinicSettings {
   webhookUrl             String? // رابط الـ Webhook المسجل في Evolution API
   aiPrompt               String? // 🤖 AI Prompt
 
+  // WhatsApp Cloud API Settings (Meta)
+  whatsappCloudEnabled   Boolean @default(false)
+  whatsappCloudApiKey    String? // WhatsApp Cloud API Access Token
+  whatsappCloudPhoneId   String? // Phone Number ID
+  whatsappCloudAppId     String? // Meta App ID
+  whatsappCloudAppSecret String? // Meta App Secret
+  whatsappCloudWebhookUrl String? // Webhook URL for Cloud API
+  whatsappCloudWebhookVerifyToken String? // Webhook Verification Token
+  whatsappCloudWebhookEndpoint String? // Webhook callback endpoint path
+  n8nWebhookUrl          String? // N8N Webhook URL for message forwarding
+  n8nWebhookEnabled      Boolean @default(false)
+
   // إعدادات إشعارات الواتساب
   followupReminderEnabled     Boolean @default(true)
   followupReminderDays        Int     @default(1)
@@ -344,4 +356,17 @@ model WhatsAppRequest {
   status      String   @default("pending") // pending, sent, failed
   sentAt      DateTime?
   createdAt   DateTime @default(now())
+}
+
+model WhatsAppMessage {
+  id           Int       @id @default(autoincrement())
+  messageId    String?   @unique
+  fromNumber   String
+  toNumber     String?
+  type         String    @default("text") // text, image, video, document, location, etc.
+  content      String?
+  status       String    @default("received") // received, sent, delivered, read, failed
+  direction    String    @default("incoming") // incoming, outgoing
+  rawPayload   String?
+  createdAt    DateTime  @default(now())
 }

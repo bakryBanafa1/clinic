@@ -467,6 +467,138 @@ async function sendWhatsAppMessage(settings, phone, message, retries = 3, mediaU
   return { success: false, error: 'Maximum retries reached', queued: true };
 }
 
+// =====================================================================
+// WhatsApp Cloud API (Meta) - Send Message
+// =====================================================================
+async function sendWhatsAppCloudMessage(settings, phone, message, mediaUrl = null, templateName = null) {
+  if (!settings?.whatsappCloudEnabled) {
+    return { success: false, error: 'WhatsApp Cloud غير مفعّل' };
+  }
+
+  if (!settings.whatsappCloudApiKey || !settings.whatsappCloudPhoneId) {
+    return { success: false, error: 'إعدادات WhatsApp Cloud غير مكتملة' };
+  }
+
+  if (!phone) {
+    return { success: false, error: 'رقم الهاتف مطلوب' };
+  }
+
+  const cleanPhone = cleanPhoneNumber(phone);
+  if (!cleanPhone) {
+    return { success: false, error: 'رقم الهاتف غير صالح' };
+  }
+
+  const apiUrl = 'https://graph.facebook.com/v18.0';
+
+  try {
+    // If template is specified, use template message
+    if (templateName) {
+      const payload = {
+        messaging_product: 'whatsapp',
+        to: cleanPhone,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: 'ar' }
+        }
+      };
+
+      const response = await fetchWithTimeout(
+        `${apiUrl}/${settings.whatsappCloudPhoneId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${settings.whatsappCloudApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        },
+        20000
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log(`✅ [WhatsApp Cloud] Template message sent to ${cleanPhone}`);
+        return { success: true, messageId: data.messages?.[0]?.id };
+      } else {
+        console.error(`❌ [WhatsApp Cloud] Template error:`, data);
+        return { success: false, error: data.error?.message || 'فشل إرسال القالب' };
+      }
+    }
+
+    // Text message
+    if (mediaUrl) {
+      // Media message with caption
+      const payload = {
+        messaging_product: 'whatsapp',
+        to: cleanPhone,
+        type: 'image',
+        image: {
+          link: mediaUrl,
+          caption: message || ''
+        }
+      };
+
+      const response = await fetchWithTimeout(
+        `${apiUrl}/${settings.whatsappCloudPhoneId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${settings.whatsappCloudApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        },
+        20000
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log(`✅ [WhatsApp Cloud] Media message sent to ${cleanPhone}`);
+        return { success: true, messageId: data.messages?.[0]?.id };
+      } else {
+        return { success: false, error: data.error?.message };
+      }
+    } else {
+      // Simple text message
+      const payload = {
+        messaging_product: 'whatsapp',
+        to: cleanPhone,
+        type: 'text',
+        text: { body: message }
+      };
+
+      const response = await fetchWithTimeout(
+        `${apiUrl}/${settings.whatsappCloudPhoneId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${settings.whatsappCloudApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        },
+        20000
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log(`✅ [WhatsApp Cloud] Message sent to ${cleanPhone}`);
+        return { success: true, messageId: data.messages?.[0]?.id };
+      } else {
+        console.error(`❌ [WhatsApp Cloud] Error:`, data);
+        return { success: false, error: data.error?.message || 'فشل إرسال الرسالة' };
+      }
+    }
+  } catch (err) {
+    console.error('❌ [WhatsApp Cloud] Exception:', err);
+    return { success: false, error: err.message };
+  }
+}
+
 module.exports = {
   generateFileNumber,
   generateInvoiceNumber,
@@ -478,6 +610,7 @@ module.exports = {
   isDatePast,
   renderTemplate,
   sendWhatsAppMessage,
+  sendWhatsAppCloudMessage,
   cleanPhoneNumber,
   fetchWithTimeout,
   circuitBreaker,
