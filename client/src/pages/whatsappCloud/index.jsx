@@ -187,6 +187,10 @@ const WhatsAppCloudPage = () => {
           <span className="tab-icon">🌐</span>
           <span>إعداد Webhook</span>
         </button>
+        <button className={`wa-tab-btn ${activeTab === 'api' ? 'active' : ''}`} onClick={() => setActiveTab('api')}>
+          <span className="tab-icon">📡</span>
+          <span>توثيق API</span>
+        </button>
         <button className={`wa-tab-btn ${activeTab === 'guide' ? 'active' : ''}`} onClick={() => setActiveTab('guide')}>
           <span className="tab-icon">📖</span>
           <span>دليل الربط</span>
@@ -682,7 +686,106 @@ const WhatsAppCloudPage = () => {
         </div>
       )}
 
-      {/* ==================== Tab 4: Guide ==================== */}
+      {/* ==================== Tab 4: API Documentation ==================== */}
+      {activeTab === 'api' && (
+        <div className="whatsapp-grid">
+          <div className="config-card paper-card lg:col-span-2">
+            <h2 className="card-title flex items-center gap-2">
+              <Zap size={20} className="text-primary" />
+              توثيق WhatsApp Cloud API للأنظمة الخارجية
+            </h2>
+
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg mb-6">
+              <h3 className="font-bold flex items-center gap-2 mb-2 text-amber-800">
+                <AlertCircle size={18} />
+               重要 - معلومات مهمة
+              </h3>
+              <ul className="text-sm text-amber-700 space-y-2">
+                <li>هذه APIs متاحة للجميع بدون الحاجة لتسجيل دخول</li>
+                <li>يجب تفعيل WhatsApp Cloud API من إعدادات الربط أولاً</li>
+                <li>استخدم الروابط أدناه في نظامك الخارجي</li>
+              </ul>
+            </div>
+
+            {/* API 1: Send Text */}
+            <div className="border border-gray-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">GET</span>
+                <h3 className="font-bold">إرسال نص فقط</h3>
+              </div>
+              <div className="bg-gray-900 text-green-400 p-3 rounded-lg mb-3 overflow-x-auto">
+                <code className="text-sm" dir="ltr">
+                  {window.location.origin}/api/whatsapp-cloud/public/send-text?phone=9665XXXXXXX&message=مرحبا
+                </code>
+              </div>
+              <div className="text-sm space-y-1">
+                <p><strong>المعاملات (Query Parameters):</strong></p>
+                <ul className="text-muted space-y-1 mr-4 list-disc list-inside">
+                  <li><code>phone</code> - رقم الواتساب (مثال: 966500000000)</li>
+                  <li><code>message</code> - نص الرسالة</li>
+                </ul>
+              </div>
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-700"><strong>مثال:</strong></p>
+                <code className="text-xs bg-gray-100 p-1 rounded block mt-1 overflow-x-auto" dir="ltr">
+                  {window.location.origin}/api/whatsapp-cloud/public/send-text?phone=966500000000&message=شكرا لزيارتك+anja
+                </code>
+              </div>
+            </div>
+
+            {/* API 2: Send Image */}
+            <div className="border border-gray-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">GET</span>
+                <h3 className="font-bold">إرسال نص + صورة</h3>
+              </div>
+              <div className="bg-gray-900 text-green-400 p-3 rounded-lg mb-3 overflow-x-auto">
+                <code className="text-sm" dir="ltr">
+                  {window.location.origin}/api/whatsapp-cloud/public/send-image?phone=9665XXXXXXX&message=وصف الصورة&mediaUrl=https://...
+                </code>
+              </div>
+              <div className="text-sm space-y-1">
+                <p><strong>المعاملات (Query Parameters):</strong></p>
+                <ul className="text-muted space-y-1 mr-4 list-disc list-inside">
+                  <li><code>phone</code> - رقم الواتساب</li>
+                  <li><code>message</code> - وصف الصورة (اختياري)</li>
+                  <li><code>mediaUrl</code> - رابط الصورة (مطلوب)</li>
+                </ul>
+              </div>
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-700"><strong>مثال:</strong></p>
+                <code className="text-xs bg-gray-100 p-1 rounded block mt-1 overflow-x-auto" dir="ltr">
+                  {window.location.origin}/api/whatsapp-cloud/public/send-image?phone=966500000000&message=وصفة&mediaUrl=https://example.com/image.jpg
+                </code>
+              </div>
+            </div>
+
+            {/* Response Examples */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="font-bold mb-3">أمثلة على الاستجابة (Response)</h3>
+
+              <div className="mb-4">
+                <p className="text-sm font-bold text-green-600 mb-1">✅ نجاح:</p>
+                <pre className="text-xs bg-gray-100 p-3 rounded overflow-x-auto" dir="ltr">{`{
+  "success": true,
+  "messageId": "wamid.abc123...",
+  "status": "sent"
+}`}</pre>
+              </div>
+
+              <div>
+                <p className="text-sm font-bold text-red-600 mb-1">❌ فشل:</p>
+                <pre className="text-xs bg-gray-100 p-3 rounded overflow-x-auto" dir="ltr">{`{
+  "success": false,
+  "error": "رقم الهاتف غير صالح"
+}`}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== Tab 5: Guide ==================== */}
       {activeTab === 'guide' && (
         <div className="whatsapp-grid">
           <div className="config-card paper-card lg:col-span-2">

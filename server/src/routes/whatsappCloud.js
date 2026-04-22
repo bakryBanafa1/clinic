@@ -333,8 +333,9 @@ router.post('/webhook', async (req, res) => {
 // ============================================================
 // WhatsApp Cloud API - Send Message
 // ============================================================
+// WhatsApp Cloud API - Send Message (requires auth)
+// ============================================================
 
-// POST: Send message via WhatsApp Cloud API
 router.post('/send', authMiddleware, async (req, res) => {
   try {
     const { phone, message, mediaUrl, templateName } = req.body;
@@ -366,6 +367,174 @@ router.post('/send', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('WhatsApp Cloud send error:', err);
     res.status(500).json({ error: 'خطأ في إرسال الرسالة' });
+  }
+});
+
+// ============================================================
+// WhatsApp Cloud API - Send Text Message (Public for External Systems)
+// URL: POST /api/whatsapp-cloud/public/send-text?phone=9665XXXXXXX&message=Hello
+// ============================================================
+router.get('/public/send-text', async (req, res) => {
+  try {
+    const { phone, message } = req.query;
+
+    if (!phone) {
+      return res.status(400).json({ error: 'رقم الهاتف مطلوب', example: '/public/send-text?phone=966500000000&message=مرحبا' });
+    }
+
+    if (!message) {
+      return res.status(400).json({ error: 'نص الرسالة مطلوب', example: '/public/send-text?phone=966500000000&message=مرحبا' });
+    }
+
+    const settings = await prisma.clinicSettings.findFirst();
+
+    if (!settings?.whatsappCloudEnabled) {
+      return res.status(400).json({ error: 'WhatsApp Cloud غير مفعّل' });
+    }
+
+    const result = await sendWhatsAppCloudMessage(settings, phone, message);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        messageId: result.messageId,
+        status: 'sent'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+  } catch (err) {
+    console.error('WhatsApp Cloud public send error:', err);
+    res.status(500).json({ error: 'خطأ في إرسال الرسالة' });
+  }
+});
+
+// ============================================================
+// WhatsApp Cloud API - Send Text + Image (Public for External Systems)
+// URL: POST /api/whatsapp-cloud/public/send-image?phone=9665XXXXXXX&message=Description&mediaUrl=https://...
+// ============================================================
+router.get('/public/send-image', async (req, res) => {
+  try {
+    const { phone, message, mediaUrl } = req.query;
+
+    if (!phone) {
+      return res.status(400).json({ error: 'رقم الهاتف مطلوب', example: '/public/send-image?phone=966500000000&message=وصف&mediaUrl=https://...' });
+    }
+
+    if (!mediaUrl) {
+      return res.status(400).json({ error: 'رابط الصورة مطلوب' });
+    }
+
+    const settings = await prisma.clinicSettings.findFirst();
+
+    if (!settings?.whatsappCloudEnabled) {
+      return res.status(400).json({ error: 'WhatsApp Cloud غير مفعّل' });
+    }
+
+    const result = await sendWhatsAppCloudMessage(settings, phone, message || '', mediaUrl);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        messageId: result.messageId,
+        status: 'sent'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+  } catch (err) {
+    console.error('WhatsApp Cloud public send image error:', err);
+    res.status(500).json({ error: 'خطأ في إرسال الصورة' });
+  }
+});
+
+// ============================================================
+// WhatsApp Cloud API - Send Text Message (Public for External Systems)
+// URL: POST /api/whatsapp-cloud/public/send-text?phone=9665XXXXXXX&message=Hello
+// ============================================================
+router.get('/public/send-text', async (req, res) => {
+  try {
+    const { phone, message } = req.query;
+
+    if (!phone) {
+      return res.status(400).json({ error: 'رقم الهاتف مطلوب', example: '/public/send-text?phone=966500000000&message=مرحبا' });
+    }
+
+    if (!message) {
+      return res.status(400).json({ error: 'نص الرسالة مطلوب', example: '/public/send-text?phone=966500000000&message=مرحبا' });
+    }
+
+    const settings = await prisma.clinicSettings.findFirst();
+
+    if (!settings?.whatsappCloudEnabled) {
+      return res.status(400).json({ error: 'WhatsApp Cloud غير مفعّل' });
+    }
+
+    const result = await sendWhatsAppCloudMessage(settings, phone, message);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        messageId: result.messageId,
+        status: 'sent'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+  } catch (err) {
+    console.error('WhatsApp Cloud public send error:', err);
+    res.status(500).json({ error: 'خطأ في إرسال الرسالة' });
+  }
+});
+
+// ============================================================
+// WhatsApp Cloud API - Send Text + Image (Public for External Systems)
+// URL: POST /api/whatsapp-cloud/public/send-image?phone=9665XXXXXXX&message=Description&mediaUrl=https://...
+// ============================================================
+router.get('/public/send-image', async (req, res) => {
+  try {
+    const { phone, message, mediaUrl } = req.query;
+
+    if (!phone) {
+      return res.status(400).json({ error: 'رقم الهاتف مطلوب', example: '/public/send-image?phone=966500000000&message=وصف&mediaUrl=https://...' });
+    }
+
+    if (!mediaUrl) {
+      return res.status(400).json({ error: 'رابط الصورة مطلوب' });
+    }
+
+    const settings = await prisma.clinicSettings.findFirst();
+
+    if (!settings?.whatsappCloudEnabled) {
+      return res.status(400).json({ error: 'WhatsApp Cloud غير مفعّل' });
+    }
+
+    const result = await sendWhatsAppCloudMessage(settings, phone, message || '', mediaUrl);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        messageId: result.messageId,
+        status: 'sent'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+  } catch (err) {
+    console.error('WhatsApp Cloud public send image error:', err);
+    res.status(500).json({ error: 'خطأ في إرسال الصورة' });
   }
 });
 
