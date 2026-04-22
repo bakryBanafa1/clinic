@@ -638,4 +638,72 @@ router.post('/verify-phone', authMiddleware, async (req, res) => {
   }
 });
 
+// ============================================================
+// WhatsApp Cloud API - Fetch Media Proxy
+// ============================================================
+
+router.get('/media/:messageId', authMiddleware, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const msg = await prisma.whatsAppMessage.findUnique({
+      where: { messageId }
+    });
+
+    if (!msg || !msg.rawPayload) {
+      return res.status(404).send('Message not found');
+    }
+
+    const payload = JSON.parse(msg.rawPayload);
+    
+    // Find media ID based on type
+    const mediaObj = payload.image || payload.video || payload.audio || payload.document || payload.sticker;
+    const mediaId = mediaObj?.id;
+
+    if (!mediaId) {
+      return res.status(404).send('No media found in message');
+    }
+
+    const settings = await prisma.clinicSettings.findFirst();
+    if (!settings?.whatsappCloudApiKey) {
+      return res.status(400).send('WhatsApp Cloud API Key not configured');
+    }
+
+    // Step 1: Get media URL
+    const urlRes = await fetchWithTimeout(
+      `https://graph.facebook.com/v18.0/${mediaId}`,
+      { headers: { 'Authorization': `Bearer ${settings.whatsappCloudApiKey}` } },
+      10000
+    );
+    
+    if (!urlRes.ok) {
+      return res.status(urlRes.status).send('Failed to fetch media URL');
+    }
+
+    const urlData = await urlRes.json();
+    const mediaUrl = urlData.url;
+    
+    // Step 2: Download media stream using global fetch
+    const mediaRes = await fetch(mediaUrl, {
+      headers: { 'Authorization': `Bearer ${settings.whatsappCloudApiKey}` }
+    });
+
+    if (!mediaRes.ok) {
+      return res.status(mediaRes.status).send('Failed to download media');
+    }
+
+    res.set('Content-Type', mediaObj.mime_type || urlData.mime_type || 'application/octet-stream');
+    
+    if (mediaRes.body.pipe) {
+      mediaRes.body.pipe(res);
+    } else {
+       const arrayBuffer = await mediaRes.arrayBuffer();
+       const buffer = Buffer.from(arrayBuffer);
+       res.send(buffer);
+    }
+  } catch (err) {
+    console.error('Media proxy error:', err);
+    res.status(500).send('Error fetching media');
+  }
+});
+
 module.exports = router;

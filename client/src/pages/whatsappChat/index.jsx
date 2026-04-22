@@ -11,6 +11,7 @@ const WhatsAppChat = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -65,25 +66,37 @@ const WhatsAppChat = () => {
   };
 
   const handleSend = async () => {
-    if (!newMessage.trim() || !selectedContact || sending) return;
+    if ((!newMessage.trim() && !selectedFile) || !selectedContact || sending) return;
 
     setSending(true);
     try {
-      const data = await api.post(`/whatsapp-conversations/conversations/${selectedContact.phone}/send`, {
-        message: newMessage.trim()
-      });
+      let data;
+      
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append('message', newMessage.trim());
+        formData.append('file', selectedFile.file);
+        
+        data = await api.post(`/whatsapp-conversations/conversations/${selectedContact.phone}/send`, formData);
+      } else {
+        data = await api.post(`/whatsapp-conversations/conversations/${selectedContact.phone}/send`, {
+          message: newMessage.trim()
+        });
+      }
 
       setMessages(prev => [...prev, data]);
       setNewMessage('');
+      setSelectedFile(null);
 
       // Update conversation list immediately
       setConversations(prev => {
         const existing = prev.find(c => c.phone === selectedContact.phone);
+        const lastMsgText = selectedFile ? ('📎 ' + (newMessage.trim() || selectedFile.file.name)) : newMessage.trim();
         const newConv = {
           phone: selectedContact.phone,
-          lastMessage: newMessage.trim(),
+          lastMessage: lastMsgText,
           lastMessageAt: new Date().toISOString(),
-          type: 'text',
+          type: selectedFile ? selectedFile.type : 'text',
           direction: 'outgoing'
         };
 
@@ -108,43 +121,10 @@ const WhatsAppChat = () => {
     if (!input?.files?.length || !selectedContact) return;
 
     const file = input.files[0];
-    setSending(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('message', file.name);
-      formData.append('mediaUrl', ''); // Will need file upload to CDN
-
-      const data = await api.post(`/whatsapp-conversations/conversations/${selectedContact.phone}/send`, formData);
-
-      setMessages(prev => [...prev, data]);
-
-      // Update conversation
-      setConversations(prev => {
-        const newConv = {
-          phone: selectedContact.phone,
-          lastMessage: '📎 ' + file.name,
-          lastMessageAt: new Date().toISOString(),
-          type: type === 'image' ? 'image' : 'file',
-          direction: 'outgoing'
-        };
-
-        const existing = prev.find(c => c.phone === selectedContact.phone);
-        if (existing) {
-          return prev.map(c => c.phone === selectedContact.phone ? newConv : c);
-        }
-        return [newConv, ...prev];
-      });
-
-      fetchMessages(selectedContact.phone);
-    } catch (err) {
-      console.error(err);
-      alert(err.message || 'فشل إرسال المرفق');
-    } finally {
-      setSending(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      if (imageInputRef.current) imageInputRef.current.value = '';
-    }
+    setSelectedFile({ file, type });
+    
+    // Reset input so the same file can be selected again
+    if (input) input.value = '';
   };
 
   const formatTime = (dateStr) => {
@@ -181,22 +161,71 @@ const WhatsAppChat = () => {
 
   const renderMessage = (msg, index) => {
     const isOutgoing = msg.direction === 'outgoing';
-    const isMedia = ['image', 'video', 'document', 'file'].includes(msg.type);
+    const isMedia = ['image', 'video', 'document', 'file', 'audio', 'sticker'].includes(msg.type);
+
+    let mediaUrl = null;
+    if (msg.rawPayload) {
+      try {
+        const payload = JSON.parse(msg.rawPayload);
+        if (isOutgoing && payload.mediaUrl) {
+          mediaUrl = payload.mediaUrl;
+        } else if (!isOutgoing) {
+          mediaUrl = `/api/whatsapp-cloud/media/${msg.messageId}`;
+        }
+      } catch(e){}
+    }
 
     return (
       <div key={msg.id || index} className={`message ${isOutgoing ? 'outgoing' : 'incoming'}`}>
         <div className="message-content">
           {isMedia ? (
             <div className="message-media">
-              {msg.type === 'image' ? (
+              {msg.type === 'image' || msg.type === 'sticker' ? (
                 <div className="media-image">
-                  <ImageIcon size={32} />
-                  <span>{msg.content || 'صورة'}</span>
+                  {mediaUrl ? (
+                    <img src={mediaUrl} alt={msg.content || 'صورة'} loading="lazy" />
+                  ) : (
+                    <>
+                      <ImageIcon size={32} />
+                      <span>{msg.content || 'صورة'}</span>
+                    </>
+                  )}
+                  {msg.content && msg.content !== '[صورة]' && msg.content !== '[ملصق]' && (
+                    <p className="media-caption">{msg.content}</p>
+                  )}
+                </div>
+              ) : msg.type === 'video' ? (
+                <div className="media-video">
+                  {mediaUrl ? (
+                    <video src={mediaUrl} controls preload="metadata" />
+                  ) : (
+                    <>
+                      <VideoIcon size={32} />
+                      <span>{msg.content || 'فيديو'}</span>
+                    </>
+                  )}
+                  {msg.content && msg.content !== '[فيديو]' && (
+                    <p className="media-caption">{msg.content}</p>
+                  )}
+                </div>
+              ) : msg.type === 'audio' ? (
+                <div className="media-audio">
+                  {mediaUrl ? (
+                    <audio src={mediaUrl} controls />
+                  ) : (
+                    <span>[مقطع صوتي]</span>
+                  )}
                 </div>
               ) : (
                 <div className="media-file">
                   <FileText size={20} />
-                  <span>{msg.content || 'ملف'}</span>
+                  {mediaUrl ? (
+                    <a href={mediaUrl} target="_blank" rel="noreferrer" className="download-link">
+                      {msg.content || 'تحميل الملف'}
+                    </a>
+                  ) : (
+                    <span>{msg.content || 'ملف'}</span>
+                  )}
                 </div>
               )}
             </div>
@@ -316,7 +345,20 @@ const WhatsAppChat = () => {
             </div>
 
             {/* Input Area */}
-            <div className="chat-input">
+            <div className="chat-input-wrapper">
+              {selectedFile && (
+                <div className="file-preview-container">
+                  <div className="file-preview">
+                    {selectedFile.type === 'image' ? (
+                      <img src={URL.createObjectURL(selectedFile.file)} alt="preview" />
+                    ) : (
+                      <div className="file-icon"><FileText size={24} /> <span>{selectedFile.file.name}</span></div>
+                    )}
+                    <button className="remove-file-btn" onClick={() => setSelectedFile(null)}>✕</button>
+                  </div>
+                </div>
+              )}
+              <div className="chat-input">
               <div className="input-actions">
                 <input
                   type="file"
@@ -353,10 +395,11 @@ const WhatsAppChat = () => {
               <button
                 className="send-btn"
                 onClick={handleSend}
-                disabled={!newMessage.trim() || sending}
+                disabled={(!newMessage.trim() && !selectedFile) || sending}
               >
                 {sending ? <RefreshCw size={18} className="spin" /> : <Send size={18} />}
               </button>
+              </div>
             </div>
           </>
         )}

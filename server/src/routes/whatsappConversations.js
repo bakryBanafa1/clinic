@@ -2,6 +2,24 @@ const express = require('express');
 const prisma = require('../lib/prisma');
 const { authMiddleware } = require('../middleware/auth');
 const { cleanPhoneNumber } = require('../lib/utils');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+const uploadsDir = path.join(__dirname, '../../uploads/whatsapp');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'wa-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const uploadWhatsApp = multer({ storage });
+
 const router = express.Router();
 
 // ============================================================
@@ -85,7 +103,7 @@ router.get('/conversations/:phone', authMiddleware, async (req, res) => {
 // Send message via WhatsApp Cloud (for chat interface)
 // ============================================================
 
-router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
+router.post('/conversations/:phone/send', authMiddleware, uploadWhatsApp.single('file'), async (req, res) => {
   try {
     const rawPhone = req.params.phone;
     const phone = cleanPhoneNumber(rawPhone);
@@ -99,22 +117,16 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
     const dbPhone = rawPhone;
 
     const settings = await prisma.clinicSettings.findFirst();
-    const isFormData = req.headers['content-type']?.includes('multipart/form-data');
 
-    let message = '';
-    let mediaUrl = null;
-    let fileUrl = null;
+    let message = req.body.message || '';
+    let mediaUrl = req.body.mediaUrl || null;
 
-    if (isFormData) {
-      // Handle FormData (file upload)
-      message = req.body.message || '';
-    } else {
-      // Handle JSON body
-      message = req.body.message || '';
-      mediaUrl = req.body.mediaUrl || null;
+    if (req.file) {
+      // Construct public URL for the uploaded file
+      mediaUrl = `${req.protocol}://${req.get('host')}/uploads/whatsapp/${req.file.filename}`;
     }
 
-    if (!message && !mediaUrl && !fileUrl) {
+    if (!message && !mediaUrl) {
       return res.status(400).json({ error: 'نص الرسالة أو المرفق مطلوب' });
     }
 
@@ -136,7 +148,7 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
               content: message || '[صورة/ملف]',
               status: 'sent',
               direction: 'outgoing',
-              rawPayload: JSON.stringify({ queued: result.queued, senderName })
+              rawPayload: JSON.stringify({ queued: result.queued, senderName, mediaUrl })
             }
           });
           return res.json(savedMsg);
@@ -161,7 +173,7 @@ router.post('/conversations/:phone/send', authMiddleware, async (req, res) => {
           content: message || '[صورة/ملف]',
           status: 'sent',
           direction: 'outgoing',
-          rawPayload: JSON.stringify({ messageId: result.messageId, senderName })
+          rawPayload: JSON.stringify({ messageId: result.messageId, senderName, mediaUrl })
         }
       });
       res.json(savedMsg);
