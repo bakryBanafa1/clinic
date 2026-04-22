@@ -8,6 +8,7 @@ const QueuePage = () => {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeVisitEntry, setActiveVisitEntry] = useState(null);
+  const [existingVisit, setExistingVisit] = useState(null);
   const [isVisitModalOpen, setIsVisitModalOpen] = useState(false);
 
   useEffect(() => {
@@ -48,14 +49,28 @@ const QueuePage = () => {
     }
   };
 
-  const openVisitForm = (entry) => {
+  const openVisitForm = async (entry) => {
     setActiveVisitEntry(entry);
+    setExistingVisit(null);
+
+    // 检查是否已存在与此预约关联的就诊记录
+    if (entry.appointmentId) {
+      try {
+        const visits = await api.get(`/visits?appointmentId=${entry.appointmentId}`);
+        if (visits.visits && visits.visits.length > 0) {
+          setExistingVisit(visits.visits[0]);
+        }
+      } catch (err) {
+        console.error('检查就诊记录时出错:', err);
+      }
+    }
     setIsVisitModalOpen(true);
   };
 
   const handleVisitSaved = () => {
     setIsVisitModalOpen(false);
     setActiveVisitEntry(null);
+    setExistingVisit(null);
     alert('تم حفظ السجل الطبي بنجاح!');
   };
 
@@ -132,14 +147,15 @@ const QueuePage = () => {
          </div>
       </div>
 
-      <Modal isOpen={isVisitModalOpen} onClose={() => setIsVisitModalOpen(false)} title={`تسجيل السجل الطبي - المريض: ${activeVisitEntry?.patient?.name}`} size="lg">
+      <Modal isOpen={isVisitModalOpen} onClose={() => setIsVisitModalOpen(false)} title={`${existingVisit ? 'تعديل' : 'تسجيل'} السجل الطبي - المريض: ${activeVisitEntry?.patient?.name}`} size="lg">
         {activeVisitEntry && (
-          <VisitForm 
-            patientId={activeVisitEntry.patientId} 
+          <VisitForm
+            patientId={activeVisitEntry.patientId}
             doctorId={activeVisitEntry.doctorId}
             appointmentId={activeVisitEntry.appointmentId}
-            onClose={() => setIsVisitModalOpen(false)} 
-            onSave={handleVisitSaved} 
+            initialVisit={existingVisit}
+            onClose={() => setIsVisitModalOpen(false)}
+            onSave={handleVisitSaved}
           />
         )}
       </Modal>

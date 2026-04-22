@@ -6,11 +6,12 @@ const router = express.Router();
 // جلب كل الزيارات
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { patientId, doctorId, date, page = 1, limit = 20 } = req.query;
+    const { patientId, doctorId, date, appointmentId, page = 1, limit = 20 } = req.query;
     const where = {};
     if (patientId) where.patientId = parseInt(patientId);
     if (doctorId) where.doctorId = parseInt(doctorId);
     if (date) where.visitDate = { gte: new Date(date + 'T00:00:00'), lte: new Date(date + 'T23:59:59') };
+    if (appointmentId) where.appointmentId = parseInt(appointmentId);
 
     const [visits, total] = await Promise.all([
       prisma.visit.findMany({
@@ -40,6 +41,16 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const { patientId, doctorId, appointmentId, chiefComplaint, diagnosis, examination, treatmentPlan, notes, vitalSigns, followUpDate, followUpReason } = req.body;
     if (!patientId || !doctorId) return res.status(400).json({ error: 'بيانات ناقصة' });
+
+    // 检查是否已经存在与此预约关联的就诊记录
+    if (appointmentId) {
+      const existingVisit = await prisma.visit.findUnique({
+        where: { appointmentId: parseInt(appointmentId) }
+      });
+      if (existingVisit) {
+        return res.status(400).json({ error: 'يوجد تسجيل طبي مرتبط بهذا الموعد بالفعل', existingVisitId: existingVisit.id });
+      }
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const visit = await tx.visit.create({
