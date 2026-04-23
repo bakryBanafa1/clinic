@@ -22,6 +22,12 @@ app.use(express.urlencoded({ extended: true }));
 const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '../uploads');
 app.use('/uploads', express.static(uploadsDir));
 
+// WhatsApp media files (persistent storage - survives redeployment)
+const fs = require('fs');
+const mediaDir = process.env.MEDIA_DIR || path.join(__dirname, '../data/whatsapp-media');
+if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
+app.use('/media/whatsapp', express.static(mediaDir));
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/patients', require('./routes/patients'));

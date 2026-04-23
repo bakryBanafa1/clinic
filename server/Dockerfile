@@ -17,6 +17,7 @@ COPY . .
 # إعداد متغير البيئة الخاص بقاعدة البيانات ومسار المرفقات
 ENV DATABASE_URL="file:/app/data/clinic.db"
 ENV UPLOADS_DIR="/app/data/uploads"
+ENV MEDIA_DIR="/app/data/whatsapp-media"
 
 # توليد Prisma Client
 # نستخدم --skip-generate في ال db push لاحقاً لأننا ولدناه هنا
