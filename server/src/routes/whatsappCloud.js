@@ -3,6 +3,8 @@ const prisma = require('../lib/prisma');
 const { authMiddleware } = require('../middleware/auth');
 const { renderTemplate, sendWhatsAppCloudMessage, cleanPhoneNumber, fetchWithTimeout } = require('../lib/utils');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
 
 // ============================================================
@@ -219,6 +221,53 @@ router.get('/webhook', async (req, res) => {
   }
 });
 
+// Function to securely download WhatsApp Cloud media to persistent storage
+async function downloadWhatsAppMedia(mediaId, settings) {
+  try {
+    const mediaDir = process.env.MEDIA_DIR || path.join(__dirname, '../../data/whatsapp-media');
+    if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
+
+    const urlRes = await fetchWithTimeout(
+      `https://graph.facebook.com/v18.0/${mediaId}`,
+      { headers: { 'Authorization': `Bearer ${settings.whatsappCloudApiKey}` } },
+      15000
+    );
+    if (!urlRes.ok) {
+      console.error(`❌ [Cloud Webhook] Failed to fetch media URL for ${mediaId}`);
+      return null;
+    }
+
+    const urlData = await urlRes.json();
+    if (!urlData.url) return null;
+    
+    const mediaRes = await fetch(urlData.url, {
+      headers: { 'Authorization': `Bearer ${settings.whatsappCloudApiKey}` }
+    });
+    if (!mediaRes.ok) {
+      console.error(`❌ [Cloud Webhook] Failed to download media for ${mediaId}`);
+      return null;
+    }
+
+    const arrayBuffer = await mediaRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    let ext = 'bin';
+    if (urlData.mime_type) {
+      ext = urlData.mime_type.split('/')[1].split(';')[0];
+      if (ext === 'jpeg') ext = 'jpg';
+      if (ext === 'quicktime') ext = 'mp4'; // common fallback
+    }
+    const filename = `wa_media_${mediaId}_${Date.now()}.${ext}`;
+    const filepath = path.join(mediaDir, filename);
+    
+    fs.writeFileSync(filepath, buffer);
+    return `/media/whatsapp/${filename}`;
+  } catch (err) {
+    console.error(`❌ [Cloud Webhook] Error downloading media ${mediaId}:`, err.message);
+    return null;
+  }
+}
+
 // ============================================================
 // WhatsApp Cloud API - Webhook Receiver
 // ============================================================
@@ -308,6 +357,16 @@ router.post('/webhook', async (req, res) => {
             const contactInfo = contacts.find(c => c.wa_id === message.from);
             const contactName = contactInfo?.profile?.name || '';
 
+            let localMediaUrl = null;
+            const mediaObj = message.image || message.video || message.audio || message.document || message.sticker;
+            if (mediaObj && mediaObj.id) {
+               console.log(`⏳ [Cloud Webhook] Downloading media ${mediaObj.id}...`);
+               localMediaUrl = await downloadWhatsAppMedia(mediaObj.id, settings);
+               if (localMediaUrl) {
+                 console.log(`✅ [Cloud Webhook] Media saved to ${localMediaUrl}`);
+               }
+            }
+
             // Save message to database
             try {
               // Check if message already exists (avoid duplicates)
@@ -332,7 +391,8 @@ router.post('/webhook', async (req, res) => {
                   rawPayload: JSON.stringify({
                     ...message,
                     _contactName: contactName,
-                    _timestamp: message.timestamp
+                    _timestamp: message.timestamp,
+                    localMediaUrl: localMediaUrl
                   })
                 }
               });
@@ -635,74 +695,6 @@ router.post('/verify-phone', authMiddleware, async (req, res) => {
       connected: false,
       error: err.message
     });
-  }
-});
-
-// ============================================================
-// WhatsApp Cloud API - Fetch Media Proxy
-// ============================================================
-
-router.get('/media/:messageId', authMiddleware, async (req, res) => {
-  try {
-    const { messageId } = req.params;
-    const msg = await prisma.whatsAppMessage.findUnique({
-      where: { messageId }
-    });
-
-    if (!msg || !msg.rawPayload) {
-      return res.status(404).send('Message not found');
-    }
-
-    const payload = JSON.parse(msg.rawPayload);
-    
-    // Find media ID based on type
-    const mediaObj = payload.image || payload.video || payload.audio || payload.document || payload.sticker;
-    const mediaId = mediaObj?.id;
-
-    if (!mediaId) {
-      return res.status(404).send('No media found in message');
-    }
-
-    const settings = await prisma.clinicSettings.findFirst();
-    if (!settings?.whatsappCloudApiKey) {
-      return res.status(400).send('WhatsApp Cloud API Key not configured');
-    }
-
-    // Step 1: Get media URL
-    const urlRes = await fetchWithTimeout(
-      `https://graph.facebook.com/v18.0/${mediaId}`,
-      { headers: { 'Authorization': `Bearer ${settings.whatsappCloudApiKey}` } },
-      10000
-    );
-    
-    if (!urlRes.ok) {
-      return res.status(urlRes.status).send('Failed to fetch media URL');
-    }
-
-    const urlData = await urlRes.json();
-    const mediaUrl = urlData.url;
-    
-    // Step 2: Download media stream using global fetch
-    const mediaRes = await fetch(mediaUrl, {
-      headers: { 'Authorization': `Bearer ${settings.whatsappCloudApiKey}` }
-    });
-
-    if (!mediaRes.ok) {
-      return res.status(mediaRes.status).send('Failed to download media');
-    }
-
-    res.set('Content-Type', mediaObj.mime_type || urlData.mime_type || 'application/octet-stream');
-    
-    if (mediaRes.body.pipe) {
-      mediaRes.body.pipe(res);
-    } else {
-       const arrayBuffer = await mediaRes.arrayBuffer();
-       const buffer = Buffer.from(arrayBuffer);
-       res.send(buffer);
-    }
-  } catch (err) {
-    console.error('Media proxy error:', err);
-    res.status(500).send('Error fetching media');
   }
 });
 

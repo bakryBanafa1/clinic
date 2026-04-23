@@ -108,6 +108,20 @@ router.get('/send', async (req, res) => {
           sentAt: new Date()
         }
       });
+      
+      await prisma.whatsAppMessage.create({
+        data: {
+          messageId: result.messageId || null,
+          fromNumber: settings.whatsappNumber || settings.whatsappCloudPhoneId || 'System',
+          toNumber: cleanPhone,
+          type: mediaUrl ? 'image' : 'text',
+          content: fullMessage || '[صورة/ملف]',
+          status: 'sent',
+          direction: 'outgoing',
+          rawPayload: JSON.stringify({ messageId: result.messageId, senderName: 'API (Auto Reply)', mediaUrl })
+        }
+      });
+
       return sendResponse(req, res, 200, true, 'تم الإرسال بنجاح', 'تم إرسال رسالة الواتساب إلى العميل بنجاح.', { data: result.data, requestId: request.id });
     } else {
       const request = await prisma.whatsAppRequest.create({
@@ -129,13 +143,16 @@ router.get('/send', async (req, res) => {
   }
 });
 
-// POST: Send WhatsApp message via Evolution API (uses shared utility)
+// POST: Send WhatsApp message via API (uses shared utility)
 router.post('/send', async (req, res) => {
   try {
-    const { phone, message } = req.body;
+    const { phone, message, mediaUrl } = req.body;
 
-    if (!phone || !message) {
-      return res.status(400).json({ error: 'رقم الهاتف والرسالة مطلوبان' });
+    if (!phone) {
+      return res.status(400).json({ error: 'رقم الهاتف مطلوب' });
+    }
+    if (!message && !mediaUrl) {
+      return res.status(400).json({ error: 'يجب توفير إما نص الرسالة أو رابط الوسائط أو كليهما' });
     }
 
     let cleanPhone = cleanPhoneNumber(phone);
@@ -149,7 +166,7 @@ router.post('/send', async (req, res) => {
       const request = await prisma.whatsAppRequest.create({
         data: {
           phone: cleanPhone,
-          message,
+          message: message || '',
           status: 'pending'
         }
       });
@@ -161,23 +178,37 @@ router.post('/send', async (req, res) => {
     }
 
     // إرسال عبر الدالة الموحدة
-    const result = await sendWhatsAppMessage(settings, cleanPhone, message);
+    const result = await sendWhatsAppMessage(settings, cleanPhone, message || '', 3, mediaUrl);
 
     if (result && result.success) {
       const request = await prisma.whatsAppRequest.create({
         data: {
           phone: cleanPhone,
-          message,
+          message: message || '',
           status: 'sent',
           sentAt: new Date()
         }
       });
+
+      await prisma.whatsAppMessage.create({
+        data: {
+          messageId: result.messageId || null,
+          fromNumber: settings.whatsappNumber || settings.whatsappCloudPhoneId || 'System',
+          toNumber: cleanPhone,
+          type: mediaUrl ? 'image' : 'text',
+          content: message || '[صورة/ملف]',
+          status: 'sent',
+          direction: 'outgoing',
+          rawPayload: JSON.stringify({ messageId: result.messageId, senderName: 'API (Auto Reply)', mediaUrl })
+        }
+      });
+
       return res.json({ success: true, message: 'تم إرسال الرسالة بنجاح', requestId: request.id });
     } else {
       const request = await prisma.whatsAppRequest.create({
         data: {
           phone: cleanPhone,
-          message,
+          message: message || '',
           status: result?.queued ? 'queued' : 'failed'
         }
       });

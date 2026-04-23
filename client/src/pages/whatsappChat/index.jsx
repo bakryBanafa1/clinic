@@ -167,10 +167,10 @@ const WhatsAppChat = () => {
     if (msg.rawPayload) {
       try {
         const payload = JSON.parse(msg.rawPayload);
-        if (isOutgoing && payload.mediaUrl) {
+        if (payload.mediaUrl) {
           mediaUrl = payload.mediaUrl;
-        } else if (!isOutgoing) {
-          mediaUrl = `/api/whatsapp-cloud/media/${msg.messageId}`;
+        } else if (payload.localMediaUrl) {
+          mediaUrl = payload.localMediaUrl;
         }
       } catch(e){}
     }
