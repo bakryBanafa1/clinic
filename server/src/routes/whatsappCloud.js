@@ -261,7 +261,7 @@ async function downloadWhatsAppMedia(mediaId, settings) {
     const filepath = path.join(mediaDir, filename);
     
     fs.writeFileSync(filepath, buffer);
-    return `/media/whatsapp/${filename}`;
+    return `/api/media/whatsapp/${filename}`;
   } catch (err) {
     console.error(`❌ [Cloud Webhook] Error downloading media ${mediaId}:`, err.message);
     return null;
@@ -487,6 +487,23 @@ router.post('/send', authMiddleware, async (req, res) => {
     const result = await sendWhatsAppCloudMessage(settings, phone, message, mediaUrl, templateName);
 
     if (result.success) {
+      try {
+        await prisma.whatsAppMessage.create({
+          data: {
+            messageId: result.messageId || null,
+            fromNumber: settings.whatsappNumber || settings.whatsappCloudPhoneId || '',
+            toNumber: phone,
+            type: mediaUrl ? 'image' : 'text',
+            content: message || '[صورة/ملف]',
+            status: 'sent',
+            direction: 'outgoing',
+            rawPayload: JSON.stringify({ messageId: result.messageId, senderName: 'API', mediaUrl, source: 'api_send' })
+          }
+        });
+      } catch (dbErr) {
+        console.error('Error saving outbound message:', dbErr);
+      }
+
       res.json({
         success: true,
         messageId: result.messageId,
@@ -529,6 +546,23 @@ router.get('/public/send-text', async (req, res) => {
     const result = await sendWhatsAppCloudMessage(settings, phone, message);
 
     if (result.success) {
+      try {
+        await prisma.whatsAppMessage.create({
+          data: {
+            messageId: result.messageId || null,
+            fromNumber: settings.whatsappNumber || settings.whatsappCloudPhoneId || '',
+            toNumber: phone,
+            type: 'text',
+            content: message,
+            status: 'sent',
+            direction: 'outgoing',
+            rawPayload: JSON.stringify({ messageId: result.messageId, senderName: 'N8N API', source: 'public_api_text' })
+          }
+        });
+      } catch (dbErr) {
+        console.error('Error saving outbound public text message:', dbErr);
+      }
+
       res.json({
         success: true,
         messageId: result.messageId,
@@ -571,6 +605,23 @@ router.get('/public/send-image', async (req, res) => {
     const result = await sendWhatsAppCloudMessage(settings, phone, message || '', mediaUrl);
 
     if (result.success) {
+      try {
+        await prisma.whatsAppMessage.create({
+          data: {
+            messageId: result.messageId || null,
+            fromNumber: settings.whatsappNumber || settings.whatsappCloudPhoneId || '',
+            toNumber: phone,
+            type: 'image',
+            content: message || '[صورة/ملف]',
+            status: 'sent',
+            direction: 'outgoing',
+            rawPayload: JSON.stringify({ messageId: result.messageId, senderName: 'N8N API', mediaUrl, source: 'public_api_image' })
+          }
+        });
+      } catch (dbErr) {
+        console.error('Error saving outbound public image message:', dbErr);
+      }
+
       res.json({
         success: true,
         messageId: result.messageId,

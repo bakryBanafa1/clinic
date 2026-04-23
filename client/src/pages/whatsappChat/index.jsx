@@ -170,7 +170,9 @@ const WhatsAppChat = () => {
         if (payload.mediaUrl) {
           mediaUrl = payload.mediaUrl;
         } else if (payload.localMediaUrl) {
-          mediaUrl = payload.localMediaUrl;
+          mediaUrl = payload.localMediaUrl.startsWith('/media/') 
+            ? `/api${payload.localMediaUrl}` 
+            : payload.localMediaUrl;
         }
       } catch(e){}
     }

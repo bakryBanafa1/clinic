@@ -26,7 +26,7 @@ app.use('/uploads', express.static(uploadsDir));
 const fs = require('fs');
 const mediaDir = process.env.MEDIA_DIR || path.join(__dirname, '../data/whatsapp-media');
 if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
-app.use('/media/whatsapp', express.static(mediaDir));
+app.use('/api/media/whatsapp', express.static(mediaDir));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
