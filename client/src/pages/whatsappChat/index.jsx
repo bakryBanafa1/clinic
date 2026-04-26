@@ -6,6 +6,111 @@ import './whatsappChat.css';
 const CONTACTS_PAGE_SIZE = 30;
 const MESSAGES_PAGE_SIZE = 50;
 
+// ===================== LAZY MEDIA COMPONENT =====================
+const LazyMedia = ({ msg }) => {
+  const [loaded, setLoaded] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState(null);
+
+  useEffect(() => {
+    if (msg.rawPayload) {
+      try {
+        const payload = JSON.parse(msg.rawPayload);
+        if (payload.mediaUrl) {
+          setMediaUrl(payload.mediaUrl);
+        } else if (payload.localMediaUrl) {
+          setMediaUrl(payload.localMediaUrl.startsWith('/media/')
+            ? `/api${payload.localMediaUrl}`
+            : payload.localMediaUrl);
+        }
+      } catch (e) {}
+    }
+  }, [msg.rawPayload]);
+
+  if (!loaded) {
+    // Show placeholder
+    return (
+      <div className="media-placeholder" onClick={() => setLoaded(true)}>
+        {msg.type === 'image' || msg.type === 'sticker' ? (
+          <>
+            <ImageIcon size={28} />
+            <span>📷 {msg.content || 'صورة'}</span>
+            <small>اضغط لعرض</small>
+          </>
+        ) : msg.type === 'video' ? (
+          <>
+            <VideoIcon size={28} />
+            <span>🎬 {msg.content || 'فيديو'}</span>
+            <small>اضغط لعرض</small>
+          </>
+        ) : msg.type === 'audio' ? (
+          <>
+            <span>🎵 مقطع صوتي</span>
+            <small>اضغط للتشغيل</small>
+          </>
+        ) : (
+          <>
+            <FileText size={28} />
+            <span>📄 {msg.content || 'ملف'}</span>
+            <small>اضغط للتحميل</small>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // Loaded: show actual media
+  if (msg.type === 'image' || msg.type === 'sticker') {
+    return (
+      <div className="media-image">
+        {mediaUrl ? (
+          <img src={mediaUrl} alt={msg.content || 'صورة'} loading="lazy" />
+        ) : (
+          <><ImageIcon size={32} /><span>{msg.content || 'صورة'}</span></>
+        )}
+        {msg.content && msg.content !== '[صورة]' && msg.content !== '[ملصق]' && (
+          <p className="media-caption">{msg.content}</p>
+        )}
+      </div>
+    );
+  } else if (msg.type === 'video') {
+    return (
+      <div className="media-video">
+        {mediaUrl ? (
+          <video src={mediaUrl} controls preload="metadata" />
+        ) : (
+          <><VideoIcon size={32} /><span>{msg.content || 'فيديو'}</span></>
+        )}
+        {msg.content && msg.content !== '[فيديو]' && (
+          <p className="media-caption">{msg.content}</p>
+        )}
+      </div>
+    );
+  } else if (msg.type === 'audio') {
+    return (
+      <div className="media-audio">
+        {mediaUrl ? (
+          <audio src={mediaUrl} controls />
+        ) : (
+          <span>[مقطع صوتي]</span>
+        )}
+      </div>
+    );
+  } else {
+    return (
+      <div className="media-file">
+        <FileText size={20} />
+        {mediaUrl ? (
+          <a href={mediaUrl} target="_blank" rel="noreferrer" className="download-link">
+            {msg.content || 'تحميل الملف'}
+          </a>
+        ) : (
+          <span>{msg.content || 'ملف'}</span>
+        )}
+      </div>
+    );
+  }
+};
+
 const WhatsAppChat = () => {
   // Contact list state
   const [conversations, setConversations] = useState([]);
@@ -289,111 +394,7 @@ const WhatsAppChat = () => {
     }
   };
 
-  // ===================== LAZY MEDIA COMPONENT =====================
 
-  const LazyMedia = ({ msg }) => {
-    const [loaded, setLoaded] = useState(false);
-    const [mediaUrl, setMediaUrl] = useState(null);
-
-    useEffect(() => {
-      if (msg.rawPayload) {
-        try {
-          const payload = JSON.parse(msg.rawPayload);
-          if (payload.mediaUrl) {
-            setMediaUrl(payload.mediaUrl);
-          } else if (payload.localMediaUrl) {
-            setMediaUrl(payload.localMediaUrl.startsWith('/media/')
-              ? `/api${payload.localMediaUrl}`
-              : payload.localMediaUrl);
-          }
-        } catch (e) {}
-      }
-    }, [msg.rawPayload]);
-
-    if (!loaded) {
-      // Show placeholder
-      return (
-        <div className="media-placeholder" onClick={() => setLoaded(true)}>
-          {msg.type === 'image' || msg.type === 'sticker' ? (
-            <>
-              <ImageIcon size={28} />
-              <span>📷 {msg.content || 'صورة'}</span>
-              <small>اضغط لعرض</small>
-            </>
-          ) : msg.type === 'video' ? (
-            <>
-              <VideoIcon size={28} />
-              <span>🎬 {msg.content || 'فيديو'}</span>
-              <small>اضغط لعرض</small>
-            </>
-          ) : msg.type === 'audio' ? (
-            <>
-              <span>🎵 مقطع صوتي</span>
-              <small>اضغط للتشغيل</small>
-            </>
-          ) : (
-            <>
-              <FileText size={28} />
-              <span>📄 {msg.content || 'ملف'}</span>
-              <small>اضغط للتحميل</small>
-            </>
-          )}
-        </div>
-      );
-    }
-
-    // Loaded: show actual media
-    if (msg.type === 'image' || msg.type === 'sticker') {
-      return (
-        <div className="media-image">
-          {mediaUrl ? (
-            <img src={mediaUrl} alt={msg.content || 'صورة'} loading="lazy" />
-          ) : (
-            <><ImageIcon size={32} /><span>{msg.content || 'صورة'}</span></>
-          )}
-          {msg.content && msg.content !== '[صورة]' && msg.content !== '[ملصق]' && (
-            <p className="media-caption">{msg.content}</p>
-          )}
-        </div>
-      );
-    } else if (msg.type === 'video') {
-      return (
-        <div className="media-video">
-          {mediaUrl ? (
-            <video src={mediaUrl} controls preload="metadata" />
-          ) : (
-            <><VideoIcon size={32} /><span>{msg.content || 'فيديو'}</span></>
-          )}
-          {msg.content && msg.content !== '[فيديو]' && (
-            <p className="media-caption">{msg.content}</p>
-          )}
-        </div>
-      );
-    } else if (msg.type === 'audio') {
-      return (
-        <div className="media-audio">
-          {mediaUrl ? (
-            <audio src={mediaUrl} controls />
-          ) : (
-            <span>[مقطع صوتي]</span>
-          )}
-        </div>
-      );
-    } else {
-      return (
-        <div className="media-file">
-          <FileText size={20} />
-          {mediaUrl ? (
-            <a href={mediaUrl} target="_blank" rel="noreferrer" className="download-link">
-              {msg.content || 'تحميل الملف'}
-            </a>
-          ) : (
-            <span>{msg.content || 'ملف'}</span>
-          )}
-        </div>
-      );
-    }
-  };
 
   // ===================== RENDER MESSAGE =====================
 
