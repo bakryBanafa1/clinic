@@ -68,7 +68,8 @@ router.get('/conversations', authMiddleware, async (req, res) => {
         createdAt: true,
         type: true,
         direction: true,
-        status: true
+        status: true,
+        rawPayload: true // Need this to extract pushName
       }
     });
 
@@ -78,15 +79,31 @@ router.get('/conversations', authMiddleware, async (req, res) => {
     for (const msg of allMessages) {
       const contactPhone = msg.direction === 'incoming' ? msg.fromNumber : msg.toNumber;
 
-      if (contactPhone && !contactsMap.has(contactPhone)) {
-        contactsMap.set(contactPhone, {
-          phone: contactPhone,
-          lastMessage: msg.content,
-          lastMessageAt: msg.createdAt,
-          type: msg.type,
-          direction: msg.direction,
-          unreadCount: msg.status !== 'read' && msg.direction === 'incoming' ? 1 : 0
-        });
+      if (contactPhone) {
+        if (!contactsMap.has(contactPhone)) {
+          contactsMap.set(contactPhone, {
+            phone: contactPhone,
+            lastMessage: msg.content,
+            lastMessageAt: msg.createdAt,
+            type: msg.type,
+            direction: msg.direction,
+            unreadCount: msg.status !== 'read' && msg.direction === 'incoming' ? 1 : 0,
+            pushName: null
+          });
+        }
+        
+        const contact = contactsMap.get(contactPhone);
+        
+        // If we haven't found a pushName yet, and this is an incoming message with a payload
+        if (!contact.pushName && msg.direction === 'incoming' && msg.rawPayload) {
+          try {
+            const payload = JSON.parse(msg.rawPayload);
+            if (payload._contactName) contact.pushName = payload._contactName;
+            else if (payload.data?.pushName) contact.pushName = payload.data.pushName;
+            else if (payload.pushName) contact.pushName = payload.pushName;
+            else if (payload.message?.pushName) contact.pushName = payload.message.pushName;
+          } catch(e) {}
+        }
       }
     }
 
@@ -97,6 +114,9 @@ router.get('/conversations', authMiddleware, async (req, res) => {
     for (const [phone, contact] of contactsMap) {
       if (nameMap[phone]) {
         contact.contactName = nameMap[phone];
+      } else if (contact.pushName) {
+        // Fallback to WhatsApp profile name if not in DB
+        contact.contactName = contact.pushName;
       }
     }
 
