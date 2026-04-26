@@ -118,7 +118,9 @@ router.get('/notification-settings', authMiddleware, async (req, res) => {
       birthdayGreetingEnabled: settings.birthdayGreetingEnabled,
       birthdayGreetingTemplate: settings.birthdayGreetingTemplate,
       postVisitEnabled: settings.postVisitEnabled,
-      postVisitTemplate: settings.postVisitTemplate
+      postVisitTemplate: settings.postVisitTemplate,
+      reminderIntervalMinutes: settings.reminderIntervalMinutes,
+      reminderStartTime: settings.reminderStartTime
     });
   } catch (err) {
     console.error('Error fetching notification settings:', err);
@@ -143,7 +145,9 @@ router.post('/notification-settings', authMiddleware, async (req, res) => {
       birthdayGreetingEnabled,
       birthdayGreetingTemplate,
       postVisitEnabled,
-      postVisitTemplate
+      postVisitTemplate,
+      reminderIntervalMinutes,
+      reminderStartTime
     } = req.body;
 
     let settings = await prisma.clinicSettings.findFirst();
@@ -167,7 +171,9 @@ router.post('/notification-settings', authMiddleware, async (req, res) => {
         birthdayGreetingEnabled: birthdayGreetingEnabled ?? settings.birthdayGreetingEnabled,
         birthdayGreetingTemplate: birthdayGreetingTemplate ?? settings.birthdayGreetingTemplate,
         postVisitEnabled: postVisitEnabled ?? settings.postVisitEnabled,
-        postVisitTemplate: postVisitTemplate ?? settings.postVisitTemplate
+        postVisitTemplate: postVisitTemplate ?? settings.postVisitTemplate,
+        reminderIntervalMinutes: reminderIntervalMinutes != null ? parseInt(reminderIntervalMinutes) : settings.reminderIntervalMinutes,
+        reminderStartTime: reminderStartTime ?? settings.reminderStartTime
       }
     });
 

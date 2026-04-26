@@ -158,4 +158,135 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// إلغاء زيارة مع الربط المالي
+router.put('/:id/cancel', authMiddleware, async (req, res) => {
+  try {
+    const visitId = parseInt(req.params.id);
+    const { cancelReason } = req.body;
+
+    // جلب الزيارة الحالية
+    const visit = await prisma.visit.findUnique({
+      where: { id: visitId },
+      include: {
+        patient: { select: { name: true, phone: true } },
+        doctor: { include: { user: { select: { name: true } } } },
+        appointment: true
+      }
+    });
+
+    if (!visit) return res.status(404).json({ error: 'الزيارة غير موجودة' });
+    if (visit.status === 'cancelled') return res.status(400).json({ error: 'الزيارة ملغاة بالفعل' });
+
+    const result = await prisma.$transaction(async (tx) => {
+      let refundAmount = 0;
+
+      // 1. تحديث حالة الزيارة
+      await tx.visit.update({
+        where: { id: visitId },
+        data: {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+          cancelReason: cancelReason || null
+        }
+      });
+
+      // 2. تحديث الفاتورة المرتبطة بالزيارة
+      const invoice = await tx.invoice.findUnique({
+        where: { visitId }
+      });
+
+      if (invoice) {
+        refundAmount = invoice.paidAmount || 0;
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            paymentStatus: refundAmount > 0 ? 'refunded' : 'cancelled',
+            refundedAmount: refundAmount,
+            paidAmount: 0,
+            notes: `${invoice.notes || ''}\n[إلغاء زيارة] ${cancelReason || 'بدون سبب'} - تم استرجاع ${refundAmount}`.trim()
+          }
+        });
+      }
+
+      // 3. تحديث الفاتورة المرتبطة بالموعد (إن وجد)
+      if (visit.appointmentId) {
+        const appointmentInvoice = await tx.invoice.findUnique({
+          where: { appointmentId: visit.appointmentId }
+        });
+
+        if (appointmentInvoice && !invoice) {
+          // إذا لم يكن هناك فاتورة على الزيارة، نحدث فاتورة الموعد
+          refundAmount = appointmentInvoice.paidAmount || 0;
+          await tx.invoice.update({
+            where: { id: appointmentInvoice.id },
+            data: {
+              paymentStatus: refundAmount > 0 ? 'refunded' : 'cancelled',
+              refundedAmount: refundAmount,
+              paidAmount: 0,
+              notes: `${appointmentInvoice.notes || ''}\n[إلغاء زيارة] ${cancelReason || 'بدون سبب'} - تم استرجاع ${refundAmount}`.trim()
+            }
+          });
+        }
+
+        // 4. تحديث حالة الموعد المرتبط
+        await tx.appointment.update({
+          where: { id: visit.appointmentId },
+          data: {
+            status: 'cancelled',
+            paidAmount: 0,
+            paymentStatus: 'unpaid'
+          }
+        });
+
+        // 5. إلغاء من الطابور إن وجد
+        const queue = await tx.queueEntry.findUnique({
+          where: { appointmentId: visit.appointmentId }
+        });
+        if (queue && queue.status !== 'completed') {
+          await tx.queueEntry.update({
+            where: { id: queue.id },
+            data: { status: 'skipped' }
+          });
+        }
+      }
+
+      // 6. إلغاء موعد المراجعة المرتبط (إن وجد)
+      const followUp = await tx.followUp.findUnique({
+        where: { visitId }
+      });
+      if (followUp && followUp.status !== 'completed') {
+        await tx.followUp.update({
+          where: { id: followUp.id },
+          data: { status: 'cancelled' }
+        });
+      }
+
+      return { refundAmount };
+    });
+
+    const updatedVisit = await prisma.visit.findUnique({
+      where: { id: visitId },
+      include: {
+        patient: { select: { name: true, fileNumber: true, phone: true } },
+        doctor: { include: { user: { select: { name: true } } } },
+        prescription: true,
+        followUp: true
+      }
+    });
+
+    const msg = result.refundAmount > 0
+      ? `تم إلغاء الزيارة بنجاح. يجب استرجاع مبلغ ${result.refundAmount} للمريض.`
+      : 'تم إلغاء الزيارة بنجاح.';
+
+    res.json({
+      message: msg,
+      refundAmount: result.refundAmount,
+      visit: updatedVisit
+    });
+  } catch (err) {
+    console.error('Error cancelling visit:', err);
+    res.status(500).json({ error: err.message || 'خطأ في الخادم' });
+  }
+});
+
 module.exports = router;

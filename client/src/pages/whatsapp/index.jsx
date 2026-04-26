@@ -685,6 +685,48 @@ const WhatsAppConnection = () => {
       {/* ==================== TAB 2: NOTIFICATIONS ==================== */}
       {activeTab === 'notifications' && (
         <div>
+          {/* إعدادات التذكير التدريجي */}
+          <div className="paper-card" style={{ marginBottom: '1.5rem', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>⏱️</span> إعدادات الإرسال التدريجي للتذكيرات
+            </h3>
+            <p style={{ margin: '0 0 1rem', fontSize: '13px', color: '#64748b', lineHeight: '1.6' }}>
+              يتم إرسال رسائل التذكير بشكل تدريجي (واحدة تلو الأخرى) بدلاً من إرسالها دفعة واحدة، لتجنب حظر الرقم.
+              <br />
+              <strong>جميع الأوقات بتوقيت اليمن / عدن (UTC+3)</strong>
+            </p>
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>وقت بدء الإرسال</label>
+                <input
+                  type="time"
+                  className="input-field"
+                  style={{ width: '140px', padding: '8px 12px', fontSize: '14px', direction: 'ltr' }}
+                  value={notifSettings.reminderStartTime || '09:00'}
+                  onChange={(e) => setNotifSettings(prev => ({ ...prev, reminderStartTime: e.target.value }))}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>الفاصل بين كل رسالة</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    className="input-field"
+                    style={{ width: '80px', padding: '8px 12px', fontSize: '14px', textAlign: 'center' }}
+                    value={notifSettings.reminderIntervalMinutes || 3}
+                    onChange={(e) => setNotifSettings(prev => ({ ...prev, reminderIntervalMinutes: parseInt(e.target.value) || 3 }))}
+                  />
+                  <span style={{ fontSize: '13px', color: '#64748b' }}>دقيقة</span>
+                </div>
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <strong>مثال:</strong> يبدأ الإرسال الساعة {notifSettings.reminderStartTime || '09:00'} صباحاً، رسالة كل {notifSettings.reminderIntervalMinutes || 3} دقائق
+              </div>
+            </div>
+          </div>
+
           <div className="notifications-container">
             {NOTIFICATION_TYPES.map(notif => {
               const enabledKey = `${notif.key}Enabled`;

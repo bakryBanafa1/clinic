@@ -20,12 +20,30 @@
   padding: 16px;
   border-bottom: 1px solid #e2e8f0;
   background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .sidebar-header h2 {
   margin: 0;
   font-size: 18px;
   color: #1e293b;
+}
+
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contacts-count {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
 }
 
 .search-box {
@@ -78,13 +96,14 @@
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: 14px;
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .contact-avatar.small {
   width: 40px;
   height: 40px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .contact-info {
@@ -96,18 +115,30 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .contact-name {
   font-weight: 600;
   font-size: 14px;
   color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .contact-time {
   font-size: 11px;
   color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.contact-phone-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 2px;
+  direction: ltr;
+  text-align: right;
 }
 
 .contact-preview {
@@ -121,11 +152,30 @@
   text-overflow: ellipsis;
 }
 
+/* Loading More */
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.end-of-list {
+  text-align: center;
+  padding: 12px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
 /* Main Chat Area */
 .chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .no-chat-selected {
@@ -174,6 +224,11 @@
   color: #94a3b8;
 }
 
+.header-phone {
+  direction: ltr;
+  unicode-bidi: embed;
+}
+
 .header-actions {
   display: flex;
   gap: 8px;
@@ -206,6 +261,27 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Loading older messages */
+.loading-older {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.load-older-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px;
+  color: #cbd5e1;
+  font-size: 12px;
 }
 
 .message {
@@ -272,6 +348,37 @@
   margin-bottom: 8px;
 }
 
+/* Lazy Media Placeholder */
+.media-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px 30px;
+  background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #475569;
+  min-width: 150px;
+}
+
+.media-placeholder:hover {
+  background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
+  transform: scale(1.02);
+}
+
+.media-placeholder span {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.media-placeholder small {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
 .media-image img {
   max-width: 250px;
   max-height: 200px;
@@ -290,6 +397,33 @@
   padding: 8px;
   background: #f1f5f9;
   border-radius: 8px;
+}
+
+/* Scroll to bottom button */
+.scroll-to-bottom-btn {
+  position: absolute;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.scroll-to-bottom-btn:hover {
+  background: #25d366;
+  color: #fff;
+  border-color: #25d366;
 }
 
 /* Input Area */
@@ -477,6 +611,33 @@
 
 .download-link:hover {
   text-decoration: underline;
+}
+
+.no-messages {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+}
+
+/* Icon button */
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
 }
 
 /* Responsive */

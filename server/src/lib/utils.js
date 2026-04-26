@@ -304,6 +304,115 @@ const messageQueue = {
 };
 
 /**
+ * جلب الوقت الحالي بتوقيت عدن (Asia/Aden = UTC+3)
+ */
+function getAdenTime() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Aden' }));
+}
+
+/**
+ * طابور التذكيرات التدريجي
+ * يرسل رسالة كل X دقائق (حسب الإعدادات) بدلاً من إرسال الكل دفعة واحدة
+ */
+const reminderQueue = {
+  _queue: [],
+  _timer: null,
+  _processing: false,
+  _intervalMinutes: 3,
+
+  /**
+   * إضافة مجموعة تذكيرات للطابور
+   * @param {Array} items - مصفوفة من {settings, phone, message, followUpId, patientName}
+   * @param {number} intervalMinutes - الفاصل بالدقائق بين كل رسالة
+   */
+  addBatch(items, intervalMinutes = 3) {
+    this._intervalMinutes = intervalMinutes || 3;
+    for (const item of items) {
+      // تجنب التكرار
+      const exists = this._queue.some(q => q.followUpId === item.followUpId);
+      if (!exists) {
+        this._queue.push({ ...item, addedAt: Date.now(), retries: 0 });
+      }
+    }
+    console.log(`📋 [ReminderQueue] Added ${items.length} reminders. Total: ${this._queue.length}. Interval: ${this._intervalMinutes}min`);
+    this._startProcessing();
+  },
+
+  _startProcessing() {
+    if (this._timer || this._queue.length === 0) return;
+    // ابدأ بإرسال أول رسالة فوراً
+    this._processNext();
+  },
+
+  async _processNext() {
+    if (this._queue.length === 0) {
+      this._timer = null;
+      this._processing = false;
+      console.log('✅ [ReminderQueue] All reminders sent');
+      return;
+    }
+
+    this._processing = true;
+    const item = this._queue.shift();
+
+    try {
+      console.log(`📤 [ReminderQueue] Sending reminder to: ${item.patientName} (${item.phone})`);
+      const result = await sendWhatsAppMessage(item.settings, item.phone, item.message);
+
+      if (result && result.success) {
+        console.log(`✅ [ReminderQueue] Delivered to: ${item.patientName}`);
+        // تحديث حالة التذكير في الـ callback إذا موجود
+        if (item.onSuccess) await item.onSuccess();
+      } else if (result && result.queued) {
+        console.log(`📥 [ReminderQueue] Queued for: ${item.patientName}`);
+        if (item.onQueued) await item.onQueued();
+      } else {
+        console.log(`❌ [ReminderQueue] Failed for: ${item.patientName} - ${result?.error}`);
+        if (item.onFail) await item.onFail();
+      }
+    } catch (err) {
+      console.error(`❌ [ReminderQueue] Error sending to ${item.patientName}:`, err.message);
+      if (item.onFail) await item.onFail();
+    }
+
+    // جدولة الرسالة التالية بعد الفاصل الزمني المحدد
+    if (this._queue.length > 0) {
+      const delayMs = this._intervalMinutes * 60 * 1000;
+      console.log(`⏳ [ReminderQueue] Next reminder in ${this._intervalMinutes} minutes. Remaining: ${this._queue.length}`);
+      this._timer = setTimeout(() => {
+        this._timer = null;
+        this._processNext();
+      }, delayMs);
+    } else {
+      this._timer = null;
+      this._processing = false;
+      console.log('✅ [ReminderQueue] All reminders sent');
+    }
+  },
+
+  getStatus() {
+    return {
+      size: this._queue.length,
+      processing: this._processing,
+      intervalMinutes: this._intervalMinutes,
+      items: this._queue.map(m => ({
+        phone: m.phone,
+        name: m.patientName,
+        age: Math.round((Date.now() - m.addedAt) / 1000) + 's'
+      }))
+    };
+  },
+
+  clear() {
+    if (this._timer) clearTimeout(this._timer);
+    this._timer = null;
+    this._queue = [];
+    this._processing = false;
+    console.log('🗑️ [ReminderQueue] Cleared');
+  }
+};
+
+/**
  * إرسال رسالة واتساب عبر Evolution API مع محاولة إعادة المحاولة في حال فشل الاتصال المؤقت
  * محسّن بـ: Circuit Breaker, Timeout, Exponential Backoff, Message Queue, Media Support
  */
@@ -614,5 +723,7 @@ module.exports = {
   cleanPhoneNumber,
   fetchWithTimeout,
   circuitBreaker,
-  messageQueue
+  messageQueue,
+  reminderQueue,
+  getAdenTime
 };

@@ -124,6 +124,9 @@ model Visit {
   treatmentPlan   String?  // خطة العلاج
   notes           String?
   vitalSigns      String?  // JSON: {bp, temp, pulse, weight, height}
+  status          String   @default("active") // active, cancelled
+  cancelledAt     DateTime?
+  cancelReason    String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -339,6 +342,10 @@ model ClinicSettings {
 
   postVisitEnabled            Boolean @default(false)
   postVisitTemplate           String  @default("شكراً لزيارتك {اسم_المريض} 🙏 نتمنى لك السلامة والشفاء العاجل. لا تتردد في التواصل معنا عند الحاجة. عيادة {اسم_العيادة}")
+
+  // إعدادات التذكيرات التدريجية
+  reminderIntervalMinutes     Int     @default(3)    // الفاصل بين كل رسالة تذكير بالدقائق
+  reminderStartTime           String  @default("09:00") // وقت بدء إرسال التذكيرات (بتوقيت عدن)
 }
 
 model WhatsAppSession {
